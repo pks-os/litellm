@@ -14,7 +14,6 @@ import dotenv, traceback, random, asyncio, time, contextvars
 from copy import deepcopy
 import httpx
 import litellm
-
 from ._logging import verbose_logger
 from litellm import (  # type: ignore
     client,
@@ -39,6 +38,7 @@ from litellm.utils import (
     Usage,
     get_optional_params_embeddings,
     get_optional_params_image_gen,
+    supports_httpx_timeout,
 )
 from .llms import (
     anthropic_text,
@@ -77,6 +77,7 @@ from .llms.prompt_templates.factory import (
     prompt_factory,
     custom_prompt,
     function_call_prompt,
+    map_system_message_pt,
 )
 import tiktoken
 from concurrent.futures import ThreadPoolExecutor
@@ -450,7 +451,7 @@ def completion(
     model: str,
     # Optional OpenAI params: see https://platform.openai.com/docs/api-reference/chat/create
     messages: List = [],
-    timeout: Optional[Union[float, int]] = None,
+    timeout: Optional[Union[float, str, httpx.Timeout]] = None,
     temperature: Optional[float] = None,
     top_p: Optional[float] = None,
     n: Optional[int] = None,
@@ -553,6 +554,7 @@ def completion(
     eos_token = kwargs.get("eos_token", None)
     preset_cache_key = kwargs.get("preset_cache_key", None)
     hf_model_name = kwargs.get("hf_model_name", None)
+    supports_system_message = kwargs.get("supports_system_message", None)
     ### TEXT COMPLETION CALLS ###
     text_completion = kwargs.get("text_completion", False)
     atext_completion = kwargs.get("atext_completion", False)
@@ -643,16 +645,27 @@ def completion(
         "no-log",
         "base_model",
         "stream_timeout",
+        "supports_system_message",
     ]
     default_params = openai_params + litellm_params
     non_default_params = {
         k: v for k, v in kwargs.items() if k not in default_params
     }  # model-specific params - pass them straight to the model/provider
-    if timeout is None:
-        timeout = (
-            kwargs.get("request_timeout", None) or 600
-        )  # set timeout for 10 minutes by default
-    timeout = float(timeout)
+
+    ### TIMEOUT LOGIC ###
+    timeout = timeout or kwargs.get("request_timeout", 600) or 600
+    # set timeout for 10 minutes by default
+
+    if (
+        timeout is not None
+        and isinstance(timeout, httpx.Timeout)
+        and supports_httpx_timeout(custom_llm_provider) == False
+    ):
+        read_timeout = timeout.read or 600
+        timeout = read_timeout  # default 10 min timeout
+    elif timeout is not None and not isinstance(timeout, httpx.Timeout):
+        timeout = float(timeout)  # type: ignore
+
     try:
         if base_url is not None:
             api_base = base_url
@@ -747,6 +760,13 @@ def completion(
                 custom_prompt_dict[model]["bos_token"] = bos_token
             if eos_token:
                 custom_prompt_dict[model]["eos_token"] = eos_token
+
+        if (
+            supports_system_message is not None
+            and isinstance(supports_system_message, bool)
+            and supports_system_message == False
+        ):
+            messages = map_system_message_pt(messages=messages)
         model_api_key = get_api_key(
             llm_provider=custom_llm_provider, dynamic_api_key=api_key
         )  # get the api key from the environment if required for the model
@@ -873,7 +893,7 @@ def completion(
                 logger_fn=logger_fn,
                 logging_obj=logging,
                 acompletion=acompletion,
-                timeout=timeout,
+                timeout=timeout,  # type: ignore
                 client=client,  # pass AsyncAzureOpenAI, AzureOpenAI client
             )
 
@@ -1014,7 +1034,7 @@ def completion(
                     optional_params=optional_params,
                     litellm_params=litellm_params,
                     logger_fn=logger_fn,
-                    timeout=timeout,
+                    timeout=timeout,  # type: ignore
                     custom_prompt_dict=custom_prompt_dict,
                     client=client,  # pass AsyncOpenAI, OpenAI client
                     organization=organization,
@@ -1099,7 +1119,7 @@ def completion(
                 optional_params=optional_params,
                 litellm_params=litellm_params,
                 logger_fn=logger_fn,
-                timeout=timeout,
+                timeout=timeout,  # type: ignore
             )
 
             if (
@@ -1473,7 +1493,7 @@ def completion(
                 acompletion=acompletion,
                 logging_obj=logging,
                 custom_prompt_dict=custom_prompt_dict,
-                timeout=timeout,
+                timeout=timeout,  # type: ignore
             )
             if (
                 "stream" in optional_params
@@ -1566,7 +1586,7 @@ def completion(
                 logger_fn=logger_fn,
                 logging_obj=logging,
                 acompletion=acompletion,
-                timeout=timeout,
+                timeout=timeout,  # type: ignore
             )
             ## LOGGING
             logging.post_call(
@@ -1893,7 +1913,7 @@ def completion(
                 logger_fn=logger_fn,
                 encoding=encoding,
                 logging_obj=logging,
-                timeout=timeout,
+                timeout=timeout,  # type: ignore
             )
             if (
                 "stream" in optional_params
@@ -2274,7 +2294,7 @@ def batch_completion(
     n: Optional[int] = None,
     stream: Optional[bool] = None,
     stop=None,
-    max_tokens: Optional[float] = None,
+    max_tokens: Optional[int] = None,
     presence_penalty: Optional[float] = None,
     frequency_penalty: Optional[float] = None,
     logit_bias: Optional[dict] = None,

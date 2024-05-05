@@ -4453,7 +4453,19 @@ def completion_cost(
         raise e
 
 
-def supports_function_calling(model: str):
+def supports_httpx_timeout(custom_llm_provider: str) -> bool:
+    """
+    Helper function to know if a provider implementation supports httpx timeout
+    """
+    supported_providers = ["openai", "azure", "bedrock"]
+
+    if custom_llm_provider in supported_providers:
+        return True
+
+    return False
+
+
+def supports_function_calling(model: str) -> bool:
     """
     Check if the given model supports function calling and return a boolean value.
 
@@ -5006,26 +5018,9 @@ def get_optional_params(
             model=model, custom_llm_provider=custom_llm_provider
         )
         _check_valid_arg(supported_params=supported_params)
-        # handle anthropic params
-        if stream:
-            optional_params["stream"] = stream
-        if stop is not None:
-            if type(stop) == str:
-                stop = [stop]  # openai can accept str/list for stop
-            optional_params["stop_sequences"] = stop
-        if temperature is not None:
-            optional_params["temperature"] = temperature
-        if top_p is not None:
-            optional_params["top_p"] = top_p
-        if max_tokens is not None:
-            if (model == "claude-2") or (model == "claude-instant-1"):
-                # these models use antropic_text.py which only accepts max_tokens_to_sample
-                optional_params["max_tokens_to_sample"] = max_tokens
-            else:
-                optional_params["max_tokens"] = max_tokens
-            optional_params["max_tokens"] = max_tokens
-        if tools is not None:
-            optional_params["tools"] = tools
+        optional_params = litellm.AnthropicConfig().map_openai_params(
+            non_default_params=non_default_params, optional_params=optional_params
+        )
     elif custom_llm_provider == "cohere":
         ## check if unsupported param passed in
         supported_params = get_supported_openai_params(
@@ -5902,6 +5897,15 @@ def get_api_base(model: str, optional_params: dict) -> Optional[str]:
     return None
 
 
+def get_first_chars_messages(kwargs: dict) -> str:
+    try:
+        _messages = kwargs.get("messages")
+        _messages = str(_messages)[:100]
+        return _messages
+    except:
+        return ""
+
+
 def get_supported_openai_params(model: str, custom_llm_provider: str):
     """
     Returns the supported openai params for a given model + provider
@@ -5929,15 +5933,7 @@ def get_supported_openai_params(model: str, custom_llm_provider: str):
     elif custom_llm_provider == "ollama_chat":
         return litellm.OllamaChatConfig().get_supported_openai_params()
     elif custom_llm_provider == "anthropic":
-        return [
-            "stream",
-            "stop",
-            "temperature",
-            "top_p",
-            "max_tokens",
-            "tools",
-            "tool_choice",
-        ]
+        return litellm.AnthropicConfig().get_supported_openai_params()
     elif custom_llm_provider == "groq":
         return [
             "temperature",
@@ -7898,6 +7894,9 @@ def exception_type(
             except:
                 _api_base = ""
 
+            error_str += f" \n model: {model} \n api_base: {_api_base} \n"
+            error_str += str(completion_kwargs)
+
             if "Request Timeout Error" in error_str or "Request timed out" in error_str:
                 exception_mapping_worked = True
                 raise Timeout(
@@ -9062,11 +9061,21 @@ def exception_type(
                             request=original_exception.request,
                         )
             elif custom_llm_provider == "azure":
+                _api_base = litellm.get_api_base(
+                    model=model, optional_params=extra_kwargs
+                )
+                messages = litellm.get_first_chars_messages(kwargs=completion_kwargs)
+                extra_information = f"\nModel: {model}"
+                if _api_base:
+                    extra_information += f"\nAPI Base: {_api_base}"
+                if messages and len(messages) > 0:
+                    extra_information += f"\nMessages: {messages}"
+
                 if "Internal server error" in error_str:
                     exception_mapping_worked = True
                     raise APIError(
                         status_code=500,
-                        message=f"AzureException - {original_exception.message}",
+                        message=f"AzureException - {original_exception.message} {extra_information}",
                         llm_provider="azure",
                         model=model,
                         request=httpx.Request(method="POST", url="https://openai.com/"),
@@ -9074,7 +9083,7 @@ def exception_type(
                 elif "This model's maximum context length is" in error_str:
                     exception_mapping_worked = True
                     raise ContextWindowExceededError(
-                        message=f"AzureException - {original_exception.message}",
+                        message=f"AzureException - {original_exception.message} {extra_information}",
                         llm_provider="azure",
                         model=model,
                         response=original_exception.response,
@@ -9082,7 +9091,7 @@ def exception_type(
                 elif "DeploymentNotFound" in error_str:
                     exception_mapping_worked = True
                     raise NotFoundError(
-                        message=f"AzureException - {original_exception.message}",
+                        message=f"AzureException - {original_exception.message} {extra_information}",
                         llm_provider="azure",
                         model=model,
                         response=original_exception.response,
@@ -9090,10 +9099,13 @@ def exception_type(
                 elif (
                     "invalid_request_error" in error_str
                     and "content_policy_violation" in error_str
+                ) or (
+                    "The response was filtered due to the prompt triggering Azure OpenAI's content management"
+                    in error_str
                 ):
                     exception_mapping_worked = True
                     raise ContentPolicyViolationError(
-                        message=f"AzureException - {original_exception.message}",
+                        message=f"AzureException - {original_exception.message} {extra_information}",
                         llm_provider="azure",
                         model=model,
                         response=original_exception.response,
@@ -9101,7 +9113,7 @@ def exception_type(
                 elif "invalid_request_error" in error_str:
                     exception_mapping_worked = True
                     raise BadRequestError(
-                        message=f"AzureException - {original_exception.message}",
+                        message=f"AzureException - {original_exception.message} {extra_information}",
                         llm_provider="azure",
                         model=model,
                         response=original_exception.response,
@@ -9112,7 +9124,7 @@ def exception_type(
                 ):
                     exception_mapping_worked = True
                     raise AuthenticationError(
-                        message=f"{exception_provider} - {original_exception.message}",
+                        message=f"{exception_provider} - {original_exception.message} {extra_information}",
                         llm_provider=custom_llm_provider,
                         model=model,
                         response=original_exception.response,
@@ -9122,7 +9134,7 @@ def exception_type(
                     if original_exception.status_code == 401:
                         exception_mapping_worked = True
                         raise AuthenticationError(
-                            message=f"AzureException - {original_exception.message}",
+                            message=f"AzureException - {original_exception.message} {extra_information}",
                             llm_provider="azure",
                             model=model,
                             response=original_exception.response,
@@ -9130,14 +9142,14 @@ def exception_type(
                     elif original_exception.status_code == 408:
                         exception_mapping_worked = True
                         raise Timeout(
-                            message=f"AzureException - {original_exception.message}",
+                            message=f"AzureException - {original_exception.message} {extra_information}",
                             model=model,
                             llm_provider="azure",
                         )
                     if original_exception.status_code == 422:
                         exception_mapping_worked = True
                         raise BadRequestError(
-                            message=f"AzureException - {original_exception.message}",
+                            message=f"AzureException - {original_exception.message} {extra_information}",
                             model=model,
                             llm_provider="azure",
                             response=original_exception.response,
@@ -9145,7 +9157,7 @@ def exception_type(
                     elif original_exception.status_code == 429:
                         exception_mapping_worked = True
                         raise RateLimitError(
-                            message=f"AzureException - {original_exception.message}",
+                            message=f"AzureException - {original_exception.message} {extra_information}",
                             model=model,
                             llm_provider="azure",
                             response=original_exception.response,
@@ -9153,7 +9165,7 @@ def exception_type(
                     elif original_exception.status_code == 503:
                         exception_mapping_worked = True
                         raise ServiceUnavailableError(
-                            message=f"AzureException - {original_exception.message}",
+                            message=f"AzureException - {original_exception.message} {extra_information}",
                             model=model,
                             llm_provider="azure",
                             response=original_exception.response,
@@ -9161,7 +9173,7 @@ def exception_type(
                     elif original_exception.status_code == 504:  # gateway timeout error
                         exception_mapping_worked = True
                         raise Timeout(
-                            message=f"AzureException - {original_exception.message}",
+                            message=f"AzureException - {original_exception.message} {extra_information}",
                             model=model,
                             llm_provider="azure",
                         )
@@ -9169,7 +9181,7 @@ def exception_type(
                         exception_mapping_worked = True
                         raise APIError(
                             status_code=original_exception.status_code,
-                            message=f"AzureException - {original_exception.message}",
+                            message=f"AzureException - {original_exception.message} {extra_information}",
                             llm_provider="azure",
                             model=model,
                             request=httpx.Request(
@@ -9179,7 +9191,7 @@ def exception_type(
                 else:
                     # if no status code then it is an APIConnectionError: https://github.com/openai/openai-python#handling-errors
                     raise APIConnectionError(
-                        message=f"{exception_provider} - {message}",
+                        message=f"{exception_provider} - {message} {extra_information}",
                         llm_provider="azure",
                         model=model,
                         request=httpx.Request(method="POST", url="https://openai.com/"),
