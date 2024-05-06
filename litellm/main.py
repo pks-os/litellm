@@ -12,6 +12,7 @@ from typing import Any, Literal, Union, BinaryIO
 from functools import partial
 import dotenv, traceback, random, asyncio, time, contextvars
 from copy import deepcopy
+
 import httpx
 import litellm
 from ._logging import verbose_logger
@@ -620,6 +621,7 @@ def completion(
         "model_list",
         "num_retries",
         "context_window_fallback_dict",
+        "retry_policy",
         "roles",
         "final_prompt_value",
         "bos_token",
@@ -2687,6 +2689,7 @@ def embedding(
         "model_list",
         "num_retries",
         "context_window_fallback_dict",
+        "retry_policy",
         "roles",
         "final_prompt_value",
         "bos_token",
@@ -3556,6 +3559,7 @@ def image_generation(
             "model_list",
             "num_retries",
             "context_window_fallback_dict",
+            "retry_policy",
             "roles",
             "final_prompt_value",
             "bos_token",
