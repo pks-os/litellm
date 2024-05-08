@@ -4929,6 +4929,7 @@ def get_optional_params(
             and custom_llm_provider != "anyscale"
             and custom_llm_provider != "together_ai"
             and custom_llm_provider != "groq"
+            and custom_llm_provider != "deepseek"
             and custom_llm_provider != "mistral"
             and custom_llm_provider != "anthropic"
             and custom_llm_provider != "cohere_chat"
@@ -5614,6 +5615,29 @@ def get_optional_params(
         if seed is not None:
             optional_params["seed"] = seed
 
+    elif custom_llm_provider == "deepseek":
+        supported_params = get_supported_openai_params(
+            model=model, custom_llm_provider=custom_llm_provider
+        )
+        _check_valid_arg(supported_params=supported_params)
+
+        if frequency_penalty is not None:
+            optional_params["frequency_penalty"] = frequency_penalty
+        if max_tokens is not None:
+            optional_params["max_tokens"] = max_tokens
+        if presence_penalty is not None:
+            optional_params["presence_penalty"] = presence_penalty
+        if stop is not None:
+            optional_params["stop"] = stop
+        if stream is not None:
+            optional_params["stream"] = stream
+        if temperature is not None:
+            optional_params["temperature"] = temperature
+        if logprobs is not None:
+            optional_params["logprobs"] = logprobs
+        if top_logprobs is not None:
+            optional_params["top_logprobs"] = top_logprobs
+
     elif custom_llm_provider == "openrouter":
         supported_params = get_supported_openai_params(
             model=model, custom_llm_provider=custom_llm_provider
@@ -5825,7 +5849,7 @@ def get_api_base(model: str, optional_params: dict) -> Optional[str]:
 
     Parameters:
     - model: str - the model passed to litellm.completion()
-    - optional_params - the additional params passed to litellm.completion - eg. api_base, api_key, etc. See `LiteLLM_Params` - https://github.com/BerriAI/litellm/blob/f09e6ba98d65e035a79f73bc069145002ceafd36/litellm/router.py#L67
+    - optional_params - the 'litellm_params' in router.completion *OR* additional params passed to litellm.completion - eg. api_base, api_key, etc. See `LiteLLM_Params` - https://github.com/BerriAI/litellm/blob/f09e6ba98d65e035a79f73bc069145002ceafd36/litellm/router.py#L67
 
     Returns:
     - string (api_base) or None
@@ -5945,6 +5969,19 @@ def get_supported_openai_params(model: str, custom_llm_provider: str):
             "tool_choice",
             "response_format",
             "seed",
+        ]
+    elif custom_llm_provider == "deepseek":
+        return [
+            # https://platform.deepseek.com/api-docs/api/create-chat-completion
+            "frequency_penalty",
+            "max_tokens",
+            "presence_penalty",
+            "stop",
+            "stream",
+            "temperature",
+            "top_p",
+            "logprobs",
+            "top_logprobs",
         ]
     elif custom_llm_provider == "cohere":
         return [
@@ -6239,8 +6276,12 @@ def get_llm_provider(
                 # groq is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.groq.com/openai/v1
                 api_base = "https://api.groq.com/openai/v1"
                 dynamic_api_key = get_secret("GROQ_API_KEY")
+            elif custom_llm_provider == "deepseek":
+                # deepseek is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.deepseek.com/v1
+                api_base = "https://api.deepseek.com/v1"
+                dynamic_api_key = get_secret("DEEPSEEK_API_KEY")
             elif custom_llm_provider == "fireworks_ai":
-                # fireworks is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.groq.com/openai/v1
+                # fireworks is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.fireworks.ai/inference/v1
                 if not model.startswith("accounts/fireworks/models"):
                     model = f"accounts/fireworks/models/{model}"
                 api_base = "https://api.fireworks.ai/inference/v1"
@@ -6303,6 +6344,9 @@ def get_llm_provider(
                     elif endpoint == "api.groq.com/openai/v1":
                         custom_llm_provider = "groq"
                         dynamic_api_key = get_secret("GROQ_API_KEY")
+                    elif endpoint == "api.deepseek.com/v1":
+                        custom_llm_provider = "deepseek"
+                        dynamic_api_key = get_secret("DEEPSEEK_API_KEY")
                     return model, custom_llm_provider, dynamic_api_key, api_base
 
         # check if model in known model provider list  -> for huggingface models, raise exception as they don't have a fixed provider (can be togetherai, anyscale, baseten, runpod, et.)
@@ -6901,6 +6945,11 @@ def validate_environment(model: Optional[str] = None) -> dict:
                 keys_in_environment = True
             else:
                 missing_keys.append("GROQ_API_KEY")
+        elif custom_llm_provider == "deepseek":
+            if "DEEPSEEK_API_KEY" in os.environ:
+                keys_in_environment = True
+            else:
+                missing_keys.append("DEEPSEEK_API_KEY")
         elif custom_llm_provider == "mistral":
             if "MISTRAL_API_KEY" in os.environ:
                 keys_in_environment = True
@@ -9373,7 +9422,7 @@ def get_secret(
         else:
             secret = os.environ.get(secret_name)
             try:
-                secret_value_as_bool = ast.literal_eval(secret)
+                secret_value_as_bool = ast.literal_eval(secret) if secret is not None else None
                 if isinstance(secret_value_as_bool, bool):
                     return secret_value_as_bool
                 else:

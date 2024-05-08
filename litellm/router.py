@@ -21,6 +21,7 @@ from collections import defaultdict
 from litellm.router_strategy.least_busy import LeastBusyLoggingHandler
 from litellm.router_strategy.lowest_tpm_rpm import LowestTPMLoggingHandler
 from litellm.router_strategy.lowest_latency import LowestLatencyLoggingHandler
+from litellm.router_strategy.lowest_cost import LowestCostLoggingHandler
 from litellm.router_strategy.lowest_tpm_rpm_v2 import LowestTPMLoggingHandler_v2
 from litellm.llms.custom_httpx.azure_dall_e_2 import (
     CustomHTTPTransport,
@@ -98,6 +99,7 @@ class Router:
             "least-busy",
             "usage-based-routing",
             "latency-based-routing",
+            "cost-based-routing",
         ] = "simple-shuffle",
         routing_strategy_args: dict = {},  # just for latency-based routing
         semaphore: Optional[asyncio.Semaphore] = None,
@@ -127,7 +129,7 @@ class Router:
             retry_after (int): Minimum time to wait before retrying a failed request. Defaults to 0.
             allowed_fails (Optional[int]): Number of allowed fails before adding to cooldown. Defaults to None.
             cooldown_time (float): Time to cooldown a deployment after failure in seconds. Defaults to 1.
-            routing_strategy (Literal["simple-shuffle", "least-busy", "usage-based-routing", "latency-based-routing"]): Routing strategy. Defaults to "simple-shuffle".
+            routing_strategy (Literal["simple-shuffle", "least-busy", "usage-based-routing", "latency-based-routing", "cost-based-routing"]): Routing strategy. Defaults to "simple-shuffle".
             routing_strategy_args (dict): Additional args for latency-based routing. Defaults to {}.
 
         Returns:
@@ -347,6 +349,14 @@ class Router:
             )
             if isinstance(litellm.callbacks, list):
                 litellm.callbacks.append(self.lowestlatency_logger)  # type: ignore
+        elif routing_strategy == "cost-based-routing":
+            self.lowestcost_logger = LowestCostLoggingHandler(
+                router_cache=self.cache,
+                model_list=self.model_list,
+                routing_args={},
+            )
+            if isinstance(litellm.callbacks, list):
+                litellm.callbacks.append(self.lowestcost_logger)  # type: ignore
 
     def print_deployment(self, deployment: dict):
         """
@@ -2597,7 +2607,10 @@ class Router:
                     return model
         return None
 
-    def get_model_ids(self):
+    def get_model_ids(self) -> List[str]:
+        """
+        Returns list of model id's.
+        """
         ids = []
         for model in self.model_list:
             if "model_info" in model and "id" in model["model_info"]:
@@ -2605,7 +2618,7 @@ class Router:
                 ids.append(id)
         return ids
 
-    def get_model_names(self):
+    def get_model_names(self) -> List[str]:
         return self.model_names
 
     def get_model_list(self):
@@ -2945,6 +2958,7 @@ class Router:
         if (
             self.routing_strategy != "usage-based-routing-v2"
             and self.routing_strategy != "simple-shuffle"
+            and self.routing_strategy != "cost-based-routing"
         ):  # prevent regressions for other routing strategies, that don't have async get available deployments implemented.
             return self.get_available_deployment(
                 model=model,
@@ -2996,6 +3010,16 @@ class Router:
             and self.lowesttpm_logger_v2 is not None
         ):
             deployment = await self.lowesttpm_logger_v2.async_get_available_deployments(
+                model_group=model,
+                healthy_deployments=healthy_deployments,
+                messages=messages,
+                input=input,
+            )
+        if (
+            self.routing_strategy == "cost-based-routing"
+            and self.lowestcost_logger is not None
+        ):
+            deployment = await self.lowestcost_logger.async_get_available_deployments(
                 model_group=model,
                 healthy_deployments=healthy_deployments,
                 messages=messages,
@@ -3268,6 +3292,8 @@ class Router:
 
         if retry_policy is None:
             return None
+        if isinstance(retry_policy, dict):
+            retry_policy = RetryPolicy(**retry_policy)
         if (
             isinstance(exception, litellm.BadRequestError)
             and retry_policy.BadRequestErrorRetries is not None

@@ -98,6 +98,7 @@ async def get_current_routing_strategy(session):
 
 
 @pytest.mark.asyncio
+@pytest.mark.order1
 async def test_check_num_callbacks():
     """
     Test 1:  num callbacks should NOT increase over time
@@ -110,12 +111,12 @@ async def test_check_num_callbacks():
     import uuid
 
     async with aiohttp.ClientSession() as session:
-        # await asyncio.sleep(30)
+        await asyncio.sleep(30)
         num_callbacks_1, _, all_litellm_callbacks_1 = await get_active_callbacks(
             session=session
         )
         assert num_callbacks_1 > 0
-        # await asyncio.sleep(30)
+        await asyncio.sleep(30)
 
         num_callbacks_2, _, all_litellm_callbacks_2 = await get_active_callbacks(
             session=session
@@ -145,6 +146,7 @@ async def test_check_num_callbacks():
 
 
 @pytest.mark.asyncio
+@pytest.mark.order2
 async def test_check_num_callbacks_on_lowest_latency():
     """
     Test 1:  num callbacks should NOT increase over time
@@ -163,6 +165,8 @@ async def test_check_num_callbacks_on_lowest_latency():
 
         original_routing_strategy = await get_current_routing_strategy(session=session)
         await config_update(session=session, routing_strategy="latency-based-routing")
+
+        await asyncio.sleep(30)
 
         num_callbacks_1, num_alerts_1, all_litellm_callbacks_1 = (
             await get_active_callbacks(session=session)
