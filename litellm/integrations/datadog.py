@@ -3,8 +3,6 @@
 
 import dotenv, os
 import requests  # type: ignore
-
-dotenv.load_dotenv()  # Loading env variables using dotenv
 import traceback
 import datetime, subprocess, sys
 import litellm, uuid
@@ -136,7 +134,6 @@ class DataDogLogger:
                 f"Datadog Layer Logging - final response object: {response_obj}"
             )
         except Exception as e:
-            traceback.print_exc()
             verbose_logger.debug(
                 f"Datadog Layer Error - {str(e)}\n{traceback.format_exc()}"
             )

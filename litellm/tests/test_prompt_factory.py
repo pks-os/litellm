@@ -1,7 +1,8 @@
 #### What this tests ####
 #    This tests if prompts are being correctly formatted
-import sys
 import os
+import sys
+
 import pytest
 
 sys.path.insert(0, os.path.abspath("../.."))
@@ -10,9 +11,11 @@ sys.path.insert(0, os.path.abspath("../.."))
 import litellm
 from litellm import completion
 from litellm.llms.prompt_templates.factory import (
-    anthropic_pt,
+    _bedrock_tools_pt,
     anthropic_messages_pt,
+    anthropic_pt,
     claude_2_1_pt,
+    convert_url_to_base64,
     llama_2_chat_pt,
     prompt_factory,
 )
@@ -128,3 +131,35 @@ def test_anthropic_messages_pt():
 
 
 # codellama_prompt_format()
+def test_bedrock_tool_calling_pt():
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_current_weather",
+                "description": "Get the current weather in a given location",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "The city and state, e.g. San Francisco, CA",
+                        },
+                        "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+                    },
+                    "required": ["location"],
+                },
+            },
+        }
+    ]
+    converted_tools = _bedrock_tools_pt(tools=tools)
+
+    print(converted_tools)
+
+
+def test_convert_url_to_img():
+    response_url = convert_url_to_base64(
+        url="https://images.pexels.com/photos/1319515/pexels-photo-1319515.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"
+    )
+
+    assert "image/jpeg" in response_url

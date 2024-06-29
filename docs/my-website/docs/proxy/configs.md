@@ -80,6 +80,13 @@ For more provider-specific info, [go here](../providers/)
 $ litellm --config /path/to/config.yaml
 ```
 
+:::tip
+
+Run with `--detailed_debug` if you need detailed debug logs 
+
+```shell
+$ litellm --config /path/to/config.yaml --detailed_debug
+:::
 
 ### Using Proxy - Curl Request, OpenAI Package, Langchain, Langchain JS
 Calling a model group 
@@ -245,17 +252,42 @@ $ litellm --config /path/to/config.yaml
 ```
 
 
+## Multiple OpenAI Organizations 
+
+Add all openai models across all OpenAI organizations with just 1 model definition 
+
+```yaml
+  - model_name: *
+    litellm_params:
+      model: openai/*
+      api_key: os.environ/OPENAI_API_KEY
+      organization:
+       - org-1 
+       - org-2 
+       - org-3
+```
+
+LiteLLM will automatically create separate deployments for each org.
+
+Confirm this via 
+
+```bash
+curl --location 'http://0.0.0.0:4000/v1/model/info' \
+--header 'Authorization: Bearer ${LITELLM_KEY}' \
+--data ''
+```
+
 ## Load Balancing 
 
 :::info
-For more on this, go to [this page](./load_balancing.md)
+For more on this, go to [this page](https://docs.litellm.ai/docs/proxy/load_balancing)
 :::
 
-Use this to call multiple instances of the same model and configure things like [routing strategy](../routing.md#advanced). 
+Use this to call multiple instances of the same model and configure things like [routing strategy](https://docs.litellm.ai/docs/routing#advanced).
 
 For optimal performance:
 - Set `tpm/rpm` per model deployment. Weighted picks are then based on the established tpm/rpm.
-- Select your optimal routing strategy in `router_settings:routing_strategy`. 
+- Select your optimal routing strategy in `router_settings:routing_strategy`.
 
 LiteLLM supports
 ```python
@@ -395,7 +427,7 @@ model_list:
 
 ```shell
 $ litellm --config /path/to/config.yaml
-```
+``` 
 
 ## Setting Embedding Models 
 

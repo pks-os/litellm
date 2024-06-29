@@ -3,8 +3,6 @@
 import dotenv, os  # type: ignore
 import requests  # type: ignore
 from datetime import datetime
-
-dotenv.load_dotenv()  # Loading env variables using dotenv
 import traceback
 import asyncio
 import types
@@ -46,6 +44,10 @@ class LangsmithLogger:
         print_verbose(
             f"Langsmith Logging - project_name: {project_name}, run_name {run_name}"
         )
+        langsmith_base_url = os.getenv(
+            "LANGSMITH_BASE_URL", "https://api.smith.langchain.com"
+        )
+
         try:
             print_verbose(
                 f"Langsmith Logging - Enters logging function for model {kwargs}"
@@ -88,8 +90,10 @@ class LangsmithLogger:
                 "end_time": end_time,
             }
 
+            url = f"{langsmith_base_url}/runs"
+            print_verbose(f"Langsmith Logging - About to send data to {url} ...")
             response = requests.post(
-                "https://api.smith.langchain.com/runs",
+                url=url,
                 json=data,
                 headers={"x-api-key": self.langsmith_api_key},
             )
@@ -102,6 +106,5 @@ class LangsmithLogger:
                 f"Langsmith Layer Logging - final response object: {response_obj}"
             )
         except:
-            # traceback.print_exc()
             print_verbose(f"Langsmith Layer Error - {traceback.format_exc()}")
             pass

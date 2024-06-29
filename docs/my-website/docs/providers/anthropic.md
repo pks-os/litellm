@@ -2,12 +2,19 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 # Anthropic
-LiteLLM supports
+LiteLLM supports all anthropic models.
 
+- `claude-3.5` (`claude-3-5-sonnet-20240620`)
 - `claude-3` (`claude-3-haiku-20240307`, `claude-3-opus-20240229`, `claude-3-sonnet-20240229`)
 - `claude-2`
 - `claude-2.1`
 - `claude-instant-1.2`
+
+:::info
+
+Anthropic API fails requests when `max_tokens` are not passed. Due to this litellm passes `max_tokens=4096` when no `max_tokens` are passed.
+
+:::
 
 ## API Keys
 
@@ -161,10 +168,15 @@ print(response)
 
 ## Supported Models
 
+`Model Name` 👉 Human-friendly name.  
+`Function Call` 👉 How to call the model in LiteLLM.
+
 | Model Name       | Function Call                              |
 |------------------|--------------------------------------------|
+| claude-3-5-sonnet  | `completion('claude-3-5-sonnet-20240620', messages)` | `os.environ['ANTHROPIC_API_KEY']`       |
 | claude-3-haiku  | `completion('claude-3-haiku-20240307', messages)` | `os.environ['ANTHROPIC_API_KEY']`       |
 | claude-3-opus  | `completion('claude-3-opus-20240229', messages)` | `os.environ['ANTHROPIC_API_KEY']`       |
+| claude-3-5-sonnet-20240620  | `completion('claude-3-5-sonnet-20240620', messages)` | `os.environ['ANTHROPIC_API_KEY']`       |
 | claude-3-sonnet  | `completion('claude-3-sonnet-20240229', messages)` | `os.environ['ANTHROPIC_API_KEY']`       |
 | claude-2.1  | `completion('claude-2.1', messages)` | `os.environ['ANTHROPIC_API_KEY']`       |
 | claude-2  | `completion('claude-2', messages)` | `os.environ['ANTHROPIC_API_KEY']`       |
@@ -221,6 +233,21 @@ assert isinstance(
     response.choices[0].message.tool_calls[0].function.arguments, str
 )
 
+```
+
+
+### Forcing Anthropic Tool Use
+
+If you want Claude to use a specific tool to answer the user’s question
+
+You can do this by specifying the tool in the `tool_choice` field like so:
+```python
+response = completion(
+    model="anthropic/claude-3-opus-20240229",
+    messages=messages,
+    tools=tools,
+    tool_choice={"type": "tool", "name": "get_weather"},
+)
 ```
 
 

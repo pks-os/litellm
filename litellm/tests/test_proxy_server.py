@@ -26,7 +26,7 @@ logging.basicConfig(
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 from litellm.proxy.proxy_server import (
-    router,
+    app,
     save_worker_config,
     initialize,
 )  # Replace with the actual module where your FastAPI router is defined
@@ -41,49 +41,39 @@ example_completion_result = {
         {
             "message": {
                 "content": "Whispers of the wind carry dreams to me.",
-                "role": "assistant"
+                "role": "assistant",
             }
         }
     ],
 }
 example_embedding_result = {
-  "object": "list",
-  "data": [
-    {
-      "object": "embedding",
-      "index": 0,
-      "embedding": [
-        -0.006929283495992422,
-        -0.005336422007530928,
-        -4.547132266452536e-05,
-        -0.024047505110502243,
-        -0.006929283495992422,
-        -0.005336422007530928,
-        -4.547132266452536e-05,
-        -0.024047505110502243,
-        -0.006929283495992422,
-        -0.005336422007530928,
-        -4.547132266452536e-05,
-        -0.024047505110502243,
-      ],
-    }
-  ],
-  "model": "text-embedding-3-small",
-  "usage": {
-    "prompt_tokens": 5,
-    "total_tokens": 5
-  }
+    "object": "list",
+    "data": [
+        {
+            "object": "embedding",
+            "index": 0,
+            "embedding": [
+                -0.006929283495992422,
+                -0.005336422007530928,
+                -4.547132266452536e-05,
+                -0.024047505110502243,
+                -0.006929283495992422,
+                -0.005336422007530928,
+                -4.547132266452536e-05,
+                -0.024047505110502243,
+                -0.006929283495992422,
+                -0.005336422007530928,
+                -4.547132266452536e-05,
+                -0.024047505110502243,
+            ],
+        }
+    ],
+    "model": "text-embedding-3-small",
+    "usage": {"prompt_tokens": 5, "total_tokens": 5},
 }
 example_image_generation_result = {
-  "created": 1589478378,
-  "data": [
-    {
-      "url": "https://..."
-    },
-    {
-      "url": "https://..."
-    }
-  ]
+    "created": 1589478378,
+    "data": [{"url": "https://..."}, {"url": "https://..."}],
 }
 
 
@@ -109,7 +99,18 @@ def mock_patch_aimage_generation():
 
 
 @pytest.fixture(scope="function")
-def client_no_auth():
+def fake_env_vars(monkeypatch):
+    # Set some fake environment variables
+    monkeypatch.setenv("OPENAI_API_KEY", "fake_openai_api_key")
+    monkeypatch.setenv("OPENAI_API_BASE", "http://fake-openai-api-base")
+    monkeypatch.setenv("AZURE_API_BASE", "http://fake-azure-api-base")
+    monkeypatch.setenv("AZURE_OPENAI_API_KEY", "fake_azure_openai_api_key")
+    monkeypatch.setenv("AZURE_SWEDEN_API_BASE", "http://fake-azure-sweden-api-base")
+    monkeypatch.setenv("REDIS_HOST", "localhost")
+
+
+@pytest.fixture(scope="function")
+def client_no_auth(fake_env_vars):
     # Assuming litellm.proxy.proxy_server is an object
     from litellm.proxy.proxy_server import cleanup_router_config_variables
 
@@ -118,9 +119,6 @@ def client_no_auth():
     config_fp = f"{filepath}/test_configs/test_config_no_auth.yaml"
     # initialize can get run in parallel, it sets specific variables for the fast api app, sinc eit gets run in parallel different tests use the wrong variables
     asyncio.run(initialize(config=config_fp, debug=True))
-    app = FastAPI()
-    app.include_router(router)  # Include your router in the test app
-
     return TestClient(app)
 
 
@@ -174,7 +172,9 @@ def test_engines_model_chat_completions(mock_acompletion, client_no_auth):
         }
 
         print("testing proxy server with chat completions")
-        response = client_no_auth.post("/engines/gpt-3.5-turbo/chat/completions", json=test_data)
+        response = client_no_auth.post(
+            "/engines/gpt-3.5-turbo/chat/completions", json=test_data
+        )
         mock_acompletion.assert_called_once_with(
             model="gpt-3.5-turbo",
             messages=[
@@ -238,7 +238,9 @@ def test_chat_completion_azure(mock_acompletion, client_no_auth):
 
 
 @mock_patch_acompletion()
-def test_openai_deployments_model_chat_completions_azure(mock_acompletion, client_no_auth):
+def test_openai_deployments_model_chat_completions_azure(
+    mock_acompletion, client_no_auth
+):
     global headers
     try:
         # Your test data
@@ -377,10 +379,10 @@ def test_img_gen(mock_aimage_generation, client_no_auth):
         response = client_no_auth.post("/v1/images/generations", json=test_data)
 
         mock_aimage_generation.assert_called_once_with(
-            model='dall-e-3',
-            prompt='A cute baby sea otter',
+            model="dall-e-3",
+            prompt="A cute baby sea otter",
             n=1,
-            size='1024x1024',
+            size="1024x1024",
             metadata=mock.ANY,
             proxy_server_request=mock.ANY,
         )
@@ -421,6 +423,10 @@ def test_add_new_model(client_no_auth):
 def test_health(client_no_auth):
     global headers
     import time
+    from litellm._logging import verbose_logger, verbose_proxy_logger
+    import logging
+
+    verbose_proxy_logger.setLevel(logging.DEBUG)
 
     try:
         response = client_no_auth.get("/health")
@@ -495,7 +501,18 @@ def test_chat_completion_optional_params(mock_acompletion, client_no_auth):
 from litellm.proxy.proxy_server import ProxyConfig
 
 
-def test_load_router_config():
+@mock.patch("litellm.proxy.proxy_server.litellm.Cache")
+def test_load_router_config(mock_cache, fake_env_vars):
+    mock_cache.return_value.cache.__dict__ = {"redis_client": None}
+    mock_cache.return_value.supported_call_types = [
+        "completion",
+        "acompletion",
+        "embedding",
+        "aembedding",
+        "atranscription",
+        "transcription",
+    ]
+
     try:
         import asyncio
 
@@ -557,6 +574,10 @@ def test_load_router_config():
         litellm.disable_cache()
 
         print("testing reading proxy config for cache with params")
+        mock_cache.return_value.supported_call_types = [
+            "embedding",
+            "aembedding",
+        ]
         asyncio.run(
             proxy_config.load_config(
                 router=None,

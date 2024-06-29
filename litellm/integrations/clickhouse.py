@@ -8,8 +8,6 @@ from litellm.proxy._types import UserAPIKeyAuth
 from litellm.caching import DualCache
 
 from typing import Literal, Union
-
-dotenv.load_dotenv()  # Loading env variables using dotenv
 import traceback
 
 
@@ -18,8 +16,6 @@ import traceback
 
 import dotenv, os
 import requests
-
-dotenv.load_dotenv()  # Loading env variables using dotenv
 import traceback
 import datetime, subprocess, sys
 import litellm, uuid
@@ -230,14 +226,6 @@ def _start_clickhouse():
             response = client.query("DESCRIBE default.spend_logs")
             verbose_logger.debug(f"spend logs schema ={response.result_rows}")
 
-        # RUN Enterprise Clickhouse Setup
-        # TLDR: For Enterprise - we create views / aggregate tables for low latency reporting APIs
-        from litellm.proxy.enterprise.utils import _create_clickhouse_aggregate_tables
-        from litellm.proxy.enterprise.utils import _create_clickhouse_material_views
-
-        _create_clickhouse_aggregate_tables(client=client, table_names=table_names)
-        _create_clickhouse_material_views(client=client, table_names=table_names)
-
 
 class ClickhouseLogger:
     # Class variables or attributes
@@ -301,6 +289,5 @@ class ClickhouseLogger:
             # make request to endpoint with payload
             verbose_logger.debug(f"Clickhouse Logger - final response = {response}")
         except Exception as e:
-            traceback.print_exc()
             verbose_logger.debug(f"Clickhouse - {str(e)}\n{traceback.format_exc()}")
             pass

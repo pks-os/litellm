@@ -3,8 +3,6 @@
 
 import dotenv, os
 import requests  # type: ignore
-
-dotenv.load_dotenv()  # Loading env variables using dotenv
 import traceback
 import datetime, subprocess, sys
 import litellm, uuid
@@ -87,6 +85,5 @@ class DyanmoDBLogger:
             )
             return response
         except:
-            traceback.print_exc()
             print_verbose(f"DynamoDB Layer Error - {traceback.format_exc()}")
             pass

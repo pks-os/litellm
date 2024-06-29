@@ -1,12 +1,9 @@
 #### What this does ####
 #   picks based on response time (for streaming, this is time to first token)
-from pydantic import BaseModel, Extra, Field, root_validator
-import dotenv, os, requests, random  # type: ignore
+from pydantic import BaseModel
 from typing import Optional, Union, List, Dict
 from datetime import datetime, timedelta
-import random
-
-dotenv.load_dotenv()  # Loading env variables using dotenv
+from litellm import verbose_logger
 import traceback
 from litellm.caching import DualCache
 from litellm.integrations.custom_logger import CustomLogger
@@ -102,9 +99,6 @@ class LowestCostLoggingHandler(CustomLogger):
                 if precise_minute not in request_count_dict[id]:
                     request_count_dict[id][precise_minute] = {}
 
-                if precise_minute not in request_count_dict[id]:
-                    request_count_dict[id][precise_minute] = {}
-
                 ## TPM
                 request_count_dict[id][precise_minute]["tpm"] = (
                     request_count_dict[id][precise_minute].get("tpm", 0) + total_tokens
@@ -123,7 +117,12 @@ class LowestCostLoggingHandler(CustomLogger):
                 if self.test_flag:
                     self.logged_success += 1
         except Exception as e:
-            traceback.print_exc()
+            verbose_logger.error(
+                "litellm.proxy.hooks.prompt_injection_detection.py::async_pre_call_hook(): Exception occured - {}".format(
+                    str(e)
+                )
+            )
+            verbose_logger.debug(traceback.format_exc())
             pass
 
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
@@ -205,7 +204,12 @@ class LowestCostLoggingHandler(CustomLogger):
                 if self.test_flag:
                     self.logged_success += 1
         except Exception as e:
-            traceback.print_exc()
+            verbose_logger.error(
+                "litellm.proxy.hooks.prompt_injection_detection.py::async_pre_call_hook(): Exception occured - {}".format(
+                    str(e)
+                )
+            )
+            verbose_logger.debug(traceback.format_exc())
             pass
 
     async def async_get_available_deployments(
