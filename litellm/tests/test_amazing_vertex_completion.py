@@ -882,6 +882,51 @@ Using this JSON schema:
 
 @pytest.mark.parametrize("provider", ["vertex_ai_beta"])  # "vertex_ai",
 @pytest.mark.asyncio
+async def test_gemini_pro_json_schema_httpx(provider):
+    load_vertex_ai_credentials()
+    litellm.set_verbose = True
+    messages = [{"role": "user", "content": "List 5 cookie recipes"}]
+    from litellm.llms.custom_httpx.http_handler import HTTPHandler
+
+    response_schema = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "recipe_name": {
+                    "type": "string",
+                },
+            },
+            "required": ["recipe_name"],
+        },
+    }
+
+    client = HTTPHandler()
+
+    with patch.object(client, "post", new=MagicMock()) as mock_call:
+        try:
+            response = completion(
+                model="vertex_ai_beta/gemini-1.5-pro-001",
+                messages=messages,
+                response_format={
+                    "type": "json_object",
+                    "response_schema": response_schema,
+                },
+                client=client,
+            )
+        except Exception as e:
+            pass
+
+        mock_call.assert_called_once()
+        print(mock_call.call_args.kwargs)
+        print(mock_call.call_args.kwargs["json"]["generationConfig"])
+        assert (
+            "response_schema" in mock_call.call_args.kwargs["json"]["generationConfig"]
+        )
+
+
+@pytest.mark.parametrize("provider", ["vertex_ai_beta"])  # "vertex_ai",
+@pytest.mark.asyncio
 async def test_gemini_pro_httpx_custom_api_base(provider):
     load_vertex_ai_credentials()
     litellm.set_verbose = True
@@ -912,6 +957,48 @@ async def test_gemini_pro_httpx_custom_api_base(provider):
 
         assert "my-custom-api-base:generateContent" == mock_call.call_args.kwargs["url"]
         assert "hello" in mock_call.call_args.kwargs["headers"]
+
+
+@pytest.mark.parametrize("sync_mode", [True, False])
+@pytest.mark.parametrize("provider", ["vertex_ai_beta"])  # "vertex_ai",
+@pytest.mark.asyncio
+async def test_gemini_pro_httpx_custom_api_base_streaming_real_call(
+    provider, sync_mode
+):
+    load_vertex_ai_credentials()
+    import random
+
+    litellm.set_verbose = True
+    messages = [
+        {
+            "role": "user",
+            "content": "Hey, how's it going?",
+        }
+    ]
+
+    vertex_region = random.sample(["asia-southeast1", "us-central1"], k=1)[0]
+    if sync_mode is True:
+        response = completion(
+            model="vertex_ai_beta/gemini-1.5-flash",
+            messages=messages,
+            api_base="https://gateway.ai.cloudflare.com/v1/fa4cdcab1f32b95ca3b53fd36043d691/test/google-vertex-ai/v1/projects/adroit-crow-413218/locations/us-central1/publishers/google/models/gemini-1.5-flash",
+            stream=True,
+            vertex_region=vertex_region,
+        )
+
+        for chunk in response:
+            print(chunk)
+    else:
+        response = await litellm.acompletion(
+            model="vertex_ai_beta/gemini-1.5-flash",
+            messages=messages,
+            api_base="https://gateway.ai.cloudflare.com/v1/fa4cdcab1f32b95ca3b53fd36043d691/test/google-vertex-ai/v1/projects/adroit-crow-413218/locations/us-central1/publishers/google/models/gemini-1.5-flash",
+            stream=True,
+            vertex_region=vertex_region,
+        )
+
+        async for chunk in response:
+            print(chunk)
 
 
 @pytest.mark.skip(reason="exhausted vertex quota. need to refactor to mock the call")
