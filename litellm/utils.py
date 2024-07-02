@@ -2406,7 +2406,9 @@ def get_optional_params(
         elif k == "hf_model_name" and custom_llm_provider != "sagemaker":
             continue
         elif (
-            k.startswith("vertex_") and custom_llm_provider != "vertex_ai"
+            k.startswith("vertex_")
+            and custom_llm_provider != "vertex_ai"
+            and custom_llm_provider != "vertex_ai_beta"
         ):  # allow dynamically setting vertex ai init logic
             continue
         passed_params[k] = v
@@ -3842,23 +3844,18 @@ def get_supported_openai_params(
         return litellm.AzureOpenAIConfig().get_supported_openai_params()
     elif custom_llm_provider == "openrouter":
         return [
-            "functions",
-            "function_call",
             "temperature",
             "top_p",
-            "n",
-            "stream",
-            "stop",
-            "max_tokens",
-            "presence_penalty",
             "frequency_penalty",
-            "logit_bias",
-            "user",
-            "response_format",
+            "presence_penalty",
+            "repetition_penalty",
             "seed",
-            "tools",
-            "tool_choice",
-            "max_retries",
+            "max_tokens",
+            "logit_bias",
+            "logprobs",
+            "top_logprobs",
+            "response_format",
+            "stop",
         ]
     elif custom_llm_provider == "mistral" or custom_llm_provider == "codestral":
         # mistal and codestral api have the exact same params
@@ -3876,6 +3873,10 @@ def get_supported_openai_params(
             "top_p",
             "stop",
             "seed",
+            "tools",
+            "tool_choice",
+            "functions",
+            "function_call",
         ]
     elif custom_llm_provider == "huggingface":
         return litellm.HuggingfaceConfig().get_supported_openai_params()
