@@ -729,9 +729,6 @@ class VertexLLM(BaseLLM):
     def load_auth(
         self, credentials: Optional[str], project_id: Optional[str]
     ) -> Tuple[Any, str]:
-        """
-        Returns Credentials, project_id
-        """
         import google.auth as google_auth
         from google.auth.credentials import Credentials  # type: ignore[import-untyped]
         from google.auth.transport.requests import (
@@ -751,10 +748,12 @@ class VertexLLM(BaseLLM):
             if project_id is None:
                 project_id = creds.project_id
         else:
-            creds, project_id = google_auth.default(
+            creds, creds_project_id = google_auth.default(
                 quota_project_id=project_id,
                 scopes=["https://www.googleapis.com/auth/cloud-platform"],
             )
+            if project_id is None:
+                project_id = creds_project_id
 
         creds.refresh(Request())
 
@@ -977,7 +976,7 @@ class VertexLLM(BaseLLM):
         api_base: Optional[str] = None,
     ) -> Union[ModelResponse, CustomStreamWrapper]:
         stream: Optional[bool] = optional_params.pop("stream", None)  # type: ignore
-
+        
         auth_header, url = self._get_token_and_url(
             model=model,
             gemini_api_key=gemini_api_key,
@@ -1038,7 +1037,9 @@ class VertexLLM(BaseLLM):
             safety_settings: Optional[List[SafetSettingsConfig]] = optional_params.pop(
                 "safety_settings", None
             )  # type: ignore
-            cached_content: Optional[str] = optional_params.pop("cached_content", None)
+            cached_content: Optional[str] = optional_params.pop(
+                "cached_content", None
+            )
             generation_config: Optional[GenerationConfig] = GenerationConfig(
                 **optional_params
             )
