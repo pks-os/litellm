@@ -603,15 +603,15 @@ class VertexLLM(BaseLLM):
 
                 ## GET USAGE ##
                 usage = litellm.Usage(
-                    prompt_tokens=completion_response["usageMetadata"][
-                        "promptTokenCount"
-                    ],
+                    prompt_tokens=completion_response["usageMetadata"].get(
+                        "promptTokenCount", 0
+                    ),
                     completion_tokens=completion_response["usageMetadata"].get(
                         "candidatesTokenCount", 0
                     ),
-                    total_tokens=completion_response["usageMetadata"][
-                        "totalTokenCount"
-                    ],
+                    total_tokens=completion_response["usageMetadata"].get(
+                        "totalTokenCount", 0
+                    ),
                 )
 
                 setattr(model_response, "usage", usage)
@@ -647,15 +647,15 @@ class VertexLLM(BaseLLM):
 
                 ## GET USAGE ##
                 usage = litellm.Usage(
-                    prompt_tokens=completion_response["usageMetadata"][
-                        "promptTokenCount"
-                    ],
+                    prompt_tokens=completion_response["usageMetadata"].get(
+                        "promptTokenCount", 0
+                    ),
                     completion_tokens=completion_response["usageMetadata"].get(
                         "candidatesTokenCount", 0
                     ),
-                    total_tokens=completion_response["usageMetadata"][
-                        "totalTokenCount"
-                    ],
+                    total_tokens=completion_response["usageMetadata"].get(
+                        "totalTokenCount", 0
+                    ),
                 )
 
                 setattr(model_response, "usage", usage)
@@ -687,6 +687,7 @@ class VertexLLM(BaseLLM):
                         id=f"call_{str(uuid.uuid4())}",
                         type="function",
                         function=_function_chunk,
+                        index=candidate.get("index", idx),
                     )
                     tools.append(_tool_response_chunk)
 
@@ -705,11 +706,15 @@ class VertexLLM(BaseLLM):
 
             ## GET USAGE ##
             usage = litellm.Usage(
-                prompt_tokens=completion_response["usageMetadata"]["promptTokenCount"],
+                prompt_tokens=completion_response["usageMetadata"].get(
+                    "promptTokenCount", 0
+                ),
                 completion_tokens=completion_response["usageMetadata"].get(
                     "candidatesTokenCount", 0
                 ),
-                total_tokens=completion_response["usageMetadata"]["totalTokenCount"],
+                total_tokens=completion_response["usageMetadata"].get(
+                    "totalTokenCount", 0
+                ),
             )
 
             setattr(model_response, "usage", usage)
@@ -976,7 +981,7 @@ class VertexLLM(BaseLLM):
         api_base: Optional[str] = None,
     ) -> Union[ModelResponse, CustomStreamWrapper]:
         stream: Optional[bool] = optional_params.pop("stream", None)  # type: ignore
-        
+
         auth_header, url = self._get_token_and_url(
             model=model,
             gemini_api_key=gemini_api_key,
@@ -1037,9 +1042,7 @@ class VertexLLM(BaseLLM):
             safety_settings: Optional[List[SafetSettingsConfig]] = optional_params.pop(
                 "safety_settings", None
             )  # type: ignore
-            cached_content: Optional[str] = optional_params.pop(
-                "cached_content", None
-            )
+            cached_content: Optional[str] = optional_params.pop("cached_content", None)
             generation_config: Optional[GenerationConfig] = GenerationConfig(
                 **optional_params
             )
@@ -1342,11 +1345,15 @@ class ModelResponseIterator:
 
             if "usageMetadata" in processed_chunk:
                 usage = ChatCompletionUsageBlock(
-                    prompt_tokens=processed_chunk["usageMetadata"]["promptTokenCount"],
+                    prompt_tokens=processed_chunk["usageMetadata"].get(
+                        "promptTokenCount", 0
+                    ),
                     completion_tokens=processed_chunk["usageMetadata"].get(
                         "candidatesTokenCount", 0
                     ),
-                    total_tokens=processed_chunk["usageMetadata"]["totalTokenCount"],
+                    total_tokens=processed_chunk["usageMetadata"].get(
+                        "totalTokenCount", 0
+                    ),
                 )
 
             returned_chunk = GenericStreamingChunk(

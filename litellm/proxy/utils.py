@@ -31,6 +31,7 @@ from litellm.caching import DualCache, RedisCache
 from litellm.exceptions import RejectedRequestError
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.integrations.slack_alerting import SlackAlerting
+from litellm.litellm_core_utils.litellm_logging import Logging
 from litellm.llms.custom_httpx.httpx_handler import HTTPHandler
 from litellm.proxy._types import (
     AlertType,
@@ -595,6 +596,27 @@ class ProxyLogging:
                 )
             )
 
+        ### LOGGING ###
+        litellm_logging_obj: Optional[Logging] = request_data.get(
+            "litellm_logging_obj", None
+        )
+
+        if isinstance(original_exception, HTTPException):
+            if litellm_logging_obj is None:
+                litellm_logging_obj, data = litellm.utils.function_setup(
+                    original_function="IGNORE_THIS",
+                    rules_obj=litellm.utils.Rules(),
+                    start_time=datetime.now(),
+                    **request_data,
+                )
+            # log the custom exception
+            await litellm_logging_obj.async_failure_handler(
+                exception=original_exception,
+                traceback_exception=traceback.format_exc(),
+                start_time=time.time(),
+                end_time=time.time(),
+            )
+
         for callback in litellm.callbacks:
             try:
                 _callback: Optional[CustomLogger] = None
@@ -611,6 +633,7 @@ class ProxyLogging:
                     )
             except Exception as e:
                 raise e
+
         return
 
     async def post_call_success_hook(
