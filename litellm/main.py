@@ -61,6 +61,7 @@ from litellm.utils import (
     get_llm_provider,
     get_optional_params_embeddings,
     get_optional_params_image_gen,
+    get_optional_params_transcription,
     get_secret,
     mock_completion_streaming_obj,
     read_config_args,
@@ -118,6 +119,7 @@ from .llms.prompt_templates.factory import (
 from .llms.text_completion_codestral import CodestralTextCompletion
 from .llms.triton import TritonChatCompletion
 from .llms.vertex_httpx import VertexLLM
+from .llms.watsonx import IBMWatsonXAI
 from .types.llms.openai import HttpxBinaryResponseContent
 from .types.utils import ChatCompletionMessageToolCall
 
@@ -152,6 +154,7 @@ triton_chat_completions = TritonChatCompletion()
 bedrock_chat_completion = BedrockLLM()
 bedrock_converse_chat_completion = BedrockConverseLLM()
 vertex_chat_completion = VertexLLM()
+watsonxai = IBMWatsonXAI()
 ####### COMPLETION ENDPOINTS ################
 
 
@@ -242,6 +245,7 @@ async def acompletion(
     seed: Optional[int] = None,
     tools: Optional[List] = None,
     tool_choice: Optional[str] = None,
+    parallel_tool_calls: Optional[bool] = None,
     logprobs: Optional[bool] = None,
     top_logprobs: Optional[int] = None,
     deployment_id=None,
@@ -317,6 +321,7 @@ async def acompletion(
         "seed": seed,
         "tools": tools,
         "tool_choice": tool_choice,
+        "parallel_tool_calls": parallel_tool_calls,
         "logprobs": logprobs,
         "top_logprobs": top_logprobs,
         "deployment_id": deployment_id,
@@ -369,6 +374,7 @@ async def acompletion(
             or custom_llm_provider == "bedrock"
             or custom_llm_provider == "databricks"
             or custom_llm_provider == "clarifai"
+            or custom_llm_provider == "watsonx"
             or custom_llm_provider in litellm.openai_compatible_providers
         ):  # currently implemented aiohttp calls for just azure, openai, hf, ollama, vertex ai soon all.
             init_response = await loop.run_in_executor(None, func_with_context)
@@ -590,6 +596,7 @@ def completion(
     tool_choice: Optional[Union[str, dict]] = None,
     logprobs: Optional[bool] = None,
     top_logprobs: Optional[int] = None,
+    parallel_tool_calls: Optional[bool] = None,
     deployment_id=None,
     extra_headers: Optional[dict] = None,
     # soon to be deprecated params by OpenAI
@@ -719,6 +726,7 @@ def completion(
         "tools",
         "tool_choice",
         "max_retries",
+        "parallel_tool_calls",
         "logprobs",
         "top_logprobs",
         "extra_headers",
@@ -929,6 +937,7 @@ def completion(
             top_logprobs=top_logprobs,
             extra_headers=extra_headers,
             api_version=api_version,
+            parallel_tool_calls=parallel_tool_calls,
             **non_default_params,
         )
 
@@ -2352,7 +2361,7 @@ def completion(
             response = response
         elif custom_llm_provider == "watsonx":
             custom_prompt_dict = custom_prompt_dict or litellm.custom_prompt_dict
-            response = watsonx.IBMWatsonXAI().completion(
+            response = watsonxai.completion(
                 model=model,
                 messages=messages,
                 custom_prompt_dict=custom_prompt_dict,
@@ -2364,6 +2373,7 @@ def completion(
                 encoding=encoding,
                 logging_obj=logging,
                 timeout=timeout,  # type: ignore
+                acompletion=acompletion,
             )
             if (
                 "stream" in optional_params
@@ -3030,6 +3040,7 @@ async def aembedding(*args, **kwargs) -> EmbeddingResponse:
             or custom_llm_provider == "ollama"
             or custom_llm_provider == "vertex_ai"
             or custom_llm_provider == "databricks"
+            or custom_llm_provider == "watsonx"
         ):  # currently implemented aiohttp calls for just azure and openai, soon all.
             # Await normally
             init_response = await loop.run_in_executor(None, func_with_context)
@@ -3537,13 +3548,14 @@ def embedding(
                 aembedding=aembedding,
             )
         elif custom_llm_provider == "watsonx":
-            response = watsonx.IBMWatsonXAI().embedding(
+            response = watsonxai.embedding(
                 model=model,
                 input=input,
                 encoding=encoding,
                 logging_obj=logging,
                 optional_params=optional_params,
                 model_response=EmbeddingResponse(),
+                aembedding=aembedding,
             )
         else:
             args = locals()
@@ -4270,7 +4282,7 @@ def image_generation(
 
 
 @client
-async def atranscription(*args, **kwargs):
+async def atranscription(*args, **kwargs) -> TranscriptionResponse:
     """
     Calls openai + azure whisper endpoints.
 
@@ -4295,9 +4307,9 @@ async def atranscription(*args, **kwargs):
 
         # Await normally
         init_response = await loop.run_in_executor(None, func_with_context)
-        if isinstance(init_response, dict) or isinstance(
-            init_response, TranscriptionResponse
-        ):  ## CACHING SCENARIO
+        if isinstance(init_response, dict):
+            response = TranscriptionResponse(**init_response)
+        elif isinstance(init_response, TranscriptionResponse):  ## CACHING SCENARIO
             response = init_response
         elif asyncio.iscoroutine(init_response):
             response = await init_response
@@ -4337,7 +4349,7 @@ def transcription(
     litellm_logging_obj: Optional[LiteLLMLoggingObj] = None,
     custom_llm_provider=None,
     **kwargs,
-):
+) -> TranscriptionResponse:
     """
     Calls openai + azure whisper endpoints.
 
@@ -4349,6 +4361,7 @@ def transcription(
     proxy_server_request = kwargs.get("proxy_server_request", None)
     model_info = kwargs.get("model_info", None)
     metadata = kwargs.get("metadata", {})
+    drop_params = kwargs.get("drop_params", None)
     client: Optional[
         Union[
             openai.AsyncOpenAI,
@@ -4370,12 +4383,22 @@ def transcription(
 
     if dynamic_api_key is not None:
         api_key = dynamic_api_key
-    optional_params = {
-        "language": language,
-        "prompt": prompt,
-        "response_format": response_format,
-        "temperature": None,  # openai defaults this to 0
-    }
+
+    optional_params = get_optional_params_transcription(
+        model=model,
+        language=language,
+        prompt=prompt,
+        response_format=response_format,
+        temperature=temperature,
+        custom_llm_provider=custom_llm_provider,
+        drop_params=drop_params,
+    )
+    # optional_params = {
+    #     "language": language,
+    #     "prompt": prompt,
+    #     "response_format": response_format,
+    #     "temperature": None,  # openai defaults this to 0
+    # }
 
     if custom_llm_provider == "azure":
         # azure configs

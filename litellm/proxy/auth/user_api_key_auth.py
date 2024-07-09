@@ -136,6 +136,19 @@ async def user_api_key_auth(
             enable_jwt_auth: true
         ```
         """
+
+        ### FILTER IP ADDRESS ###
+
+        is_valid_ip = _check_valid_ip(
+            allowed_ips=general_settings.get("allowed_ips", None), request=request
+        )
+
+        if not is_valid_ip:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access forbidden: IP address not allowed.",
+            )
+
         route: str = request.url.path
 
         if (
@@ -1129,12 +1142,15 @@ async def user_api_key_auth(
 
         if isinstance(e, litellm.BudgetExceededError):
             raise ProxyException(
-                message=e.message, type="auth_error", param=None, code=400
+                message=e.message,
+                type=ProxyErrorTypes.budget_exceeded,
+                param=None,
+                code=400,
             )
         if isinstance(e, HTTPException):
             raise ProxyException(
                 message=getattr(e, "detail", f"Authentication Error({str(e)})"),
-                type="auth_error",
+                type=ProxyErrorTypes.auth_error,
                 param=getattr(e, "param", "None"),
                 code=getattr(e, "status_code", status.HTTP_401_UNAUTHORIZED),
             )
@@ -1142,7 +1158,7 @@ async def user_api_key_auth(
             raise e
         raise ProxyException(
             message="Authentication Error, " + str(e),
-            type="auth_error",
+            type=ProxyErrorTypes.auth_error,
             param=getattr(e, "param", "None"),
             code=status.HTTP_401_UNAUTHORIZED,
         )
@@ -1205,3 +1221,22 @@ def _get_user_role(user_id_information: Optional[list]):
 
     _user = user_id_information[0]
     return _user.get("user_role")
+
+
+def _check_valid_ip(allowed_ips: Optional[List[str]], request: Request) -> bool:
+    """
+    Returns if ip is allowed or not
+    """
+    if allowed_ips is None:  # if not set, assume true
+        return True
+
+    if request.client is not None:
+        client_ip = request.client.host
+    else:
+        client_ip = None
+
+    # Check if IP address is allowed
+    if client_ip not in allowed_ips:
+        return False
+
+    return True
