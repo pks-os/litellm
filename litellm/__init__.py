@@ -789,6 +789,7 @@ from .utils import (
     get_api_base,
     get_first_chars_messages,
     ModelResponse,
+    EmbeddingResponse,
     ImageResponse,
     get_provider_fields,
 )
@@ -882,3 +883,8 @@ from .batches.main import *
 from .files.main import *
 from .scheduler import *
 from .cost_calculator import response_cost_calculator, cost_per_token
+
+### ADAPTERS ###
+from .types.adapter import AdapterItem
+
+adapters: List[AdapterItem] = []
