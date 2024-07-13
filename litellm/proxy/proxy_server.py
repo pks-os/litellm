@@ -446,6 +446,7 @@ def _get_pydantic_json_dict(pydantic_obj: BaseModel) -> dict:
 def get_custom_headers(
     *,
     user_api_key_dict: UserAPIKeyAuth,
+    call_id: Optional[str] = None,
     model_id: Optional[str] = None,
     cache_key: Optional[str] = None,
     api_base: Optional[str] = None,
@@ -457,6 +458,7 @@ def get_custom_headers(
 ) -> dict:
     exclude_values = {"", None}
     headers = {
+        "x-litellm-call-id": call_id,
         "x-litellm-model-id": model_id,
         "x-litellm-cache-key": cache_key,
         "x-litellm-model-api-base": api_base,
@@ -1467,12 +1469,14 @@ class ProxyConfig:
                             + CommonProxyErrors.not_premium_user.value
                         )
 
-                    initialize_guardrails(
+                    guardrail_name_config_map = initialize_guardrails(
                         guardrails_config=value,
                         premium_user=premium_user,
                         config_file_path=config_file_path,
                         litellm_settings=litellm_settings,
                     )
+
+                    litellm.guardrail_name_config_map = guardrail_name_config_map
                 elif key == "callbacks":
 
                     initialize_callbacks_on_proxy(
@@ -2796,7 +2800,9 @@ async def chat_completion(
 
         ## LOGGING OBJECT ## - initialize logging object for logging success/failure events for call
         ## IMPORTANT Note: - initialize this before running pre-call checks. Ensures we log rejected requests to langfuse.
-        data["litellm_call_id"] = str(uuid.uuid4())
+        data["litellm_call_id"] = request.headers.get(
+            "x-litellm-call-id", str(uuid.uuid4())
+        )
         logging_obj, data = litellm.utils.function_setup(
             original_function="acompletion",
             rules_obj=litellm.utils.Rules(),
@@ -2902,6 +2908,7 @@ async def chat_completion(
         ):  # use generate_responses to stream responses
             custom_headers = get_custom_headers(
                 user_api_key_dict=user_api_key_dict,
+                call_id=logging_obj.litellm_call_id,
                 model_id=model_id,
                 cache_key=cache_key,
                 api_base=api_base,
@@ -2932,6 +2939,7 @@ async def chat_completion(
         fastapi_response.headers.update(
             get_custom_headers(
                 user_api_key_dict=user_api_key_dict,
+                call_id=logging_obj.litellm_call_id,
                 model_id=model_id,
                 cache_key=cache_key,
                 api_base=api_base,
@@ -3131,6 +3139,7 @@ async def completion(
         cache_key = hidden_params.get("cache_key", None) or ""
         api_base = hidden_params.get("api_base", None) or ""
         response_cost = hidden_params.get("response_cost", None) or ""
+        litellm_call_id = hidden_params.get("litellm_call_id", None) or ""
 
         ### ALERTING ###
         asyncio.create_task(
@@ -3145,6 +3154,7 @@ async def completion(
         ):  # use generate_responses to stream responses
             custom_headers = get_custom_headers(
                 user_api_key_dict=user_api_key_dict,
+                call_id=litellm_call_id,
                 model_id=model_id,
                 cache_key=cache_key,
                 api_base=api_base,
@@ -3165,6 +3175,7 @@ async def completion(
         fastapi_response.headers.update(
             get_custom_headers(
                 user_api_key_dict=user_api_key_dict,
+                call_id=litellm_call_id,
                 model_id=model_id,
                 cache_key=cache_key,
                 api_base=api_base,
@@ -3383,6 +3394,7 @@ async def embeddings(
         cache_key = hidden_params.get("cache_key", None) or ""
         api_base = hidden_params.get("api_base", None) or ""
         response_cost = hidden_params.get("response_cost", None) or ""
+        litellm_call_id = hidden_params.get("litellm_call_id", None) or ""
 
         fastapi_response.headers.update(
             get_custom_headers(
@@ -3393,6 +3405,7 @@ async def embeddings(
                 version=version,
                 response_cost=response_cost,
                 model_region=getattr(user_api_key_dict, "allowed_model_region", ""),
+                call_id=litellm_call_id,
             )
         )
 
@@ -3537,6 +3550,7 @@ async def image_generation(
         cache_key = hidden_params.get("cache_key", None) or ""
         api_base = hidden_params.get("api_base", None) or ""
         response_cost = hidden_params.get("response_cost", None) or ""
+        litellm_call_id = hidden_params.get("litellm_call_id", None) or ""
 
         fastapi_response.headers.update(
             get_custom_headers(
@@ -3547,6 +3561,7 @@ async def image_generation(
                 version=version,
                 response_cost=response_cost,
                 model_region=getattr(user_api_key_dict, "allowed_model_region", ""),
+                call_id=litellm_call_id,
             )
         )
 
@@ -3678,6 +3693,7 @@ async def audio_speech(
         cache_key = hidden_params.get("cache_key", None) or ""
         api_base = hidden_params.get("api_base", None) or ""
         response_cost = hidden_params.get("response_cost", None) or ""
+        litellm_call_id = hidden_params.get("litellm_call_id", None) or ""
 
         # Printing each chunk size
         async def generate(_response: HttpxBinaryResponseContent):
@@ -3694,6 +3710,7 @@ async def audio_speech(
             response_cost=response_cost,
             model_region=getattr(user_api_key_dict, "allowed_model_region", ""),
             fastest_response_batch_completion=None,
+            call_id=litellm_call_id,
         )
 
         selected_data_generator = select_data_generator(
@@ -3848,6 +3865,7 @@ async def audio_transcriptions(
         cache_key = hidden_params.get("cache_key", None) or ""
         api_base = hidden_params.get("api_base", None) or ""
         response_cost = hidden_params.get("response_cost", None) or ""
+        litellm_call_id = hidden_params.get("litellm_call_id", None) or ""
 
         fastapi_response.headers.update(
             get_custom_headers(
@@ -3858,6 +3876,7 @@ async def audio_transcriptions(
                 version=version,
                 response_cost=response_cost,
                 model_region=getattr(user_api_key_dict, "allowed_model_region", ""),
+                call_id=litellm_call_id,
             )
         )
 

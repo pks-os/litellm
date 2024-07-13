@@ -655,6 +655,16 @@ class Logging:
                 result=result, litellm_logging_obj=self
             )
 
+            ## LOGGING HOOK ##
+
+            for callback in callbacks:
+                if isinstance(callback, CustomLogger):
+                    self.model_call_details["input"], result = callback.logging_hook(
+                        kwargs=self.model_call_details,
+                        result=result,
+                        call_type=self.call_type,
+                    )
+
             for callback in callbacks:
                 try:
                     litellm_params = self.model_call_details.get("litellm_params", {})
@@ -811,6 +821,7 @@ class Logging:
                         print_verbose("reaches helicone for logging!")
                         model = self.model
                         messages = self.model_call_details["input"]
+                        kwargs = self.model_call_details
                         heliconeLogger.log_success(
                             model=model,
                             messages=messages,
@@ -818,6 +829,7 @@ class Logging:
                             start_time=start_time,
                             end_time=end_time,
                             print_verbose=print_verbose,
+                            kwargs=kwargs,
                         )
                     if callback == "langfuse":
                         global langFuseLogger
@@ -1093,19 +1105,19 @@ class Logging:
                         and self.model_call_details.get("litellm_params", {}).get(
                             "acompletion", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "aembedding", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "aimage_generation", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "atranscription", False
                         )
-                        == False
+                        is not True
                     ):
                         global openMeterLogger
                         if openMeterLogger is None:
@@ -1138,19 +1150,19 @@ class Logging:
                         and self.model_call_details.get("litellm_params", {}).get(
                             "acompletion", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "aembedding", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "aimage_generation", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "atranscription", False
                         )
-                        == False
+                        is not True
                     ):  # custom logger class
                         if self.stream and complete_streaming_response is None:
                             callback.log_stream_event(
@@ -1178,19 +1190,19 @@ class Logging:
                         and self.model_call_details.get("litellm_params", {}).get(
                             "acompletion", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "aembedding", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "aimage_generation", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "atranscription", False
                         )
-                        == False
+                        is not True
                     ):  # custom logger functions
                         print_verbose(
                             f"success callbacks: Running Custom Callback Function"
@@ -1299,6 +1311,18 @@ class Logging:
         result = redact_message_input_output_from_logging(
             result=result, litellm_logging_obj=self
         )
+
+        ## LOGGING HOOK ##
+
+        for callback in callbacks:
+            if isinstance(callback, CustomLogger):
+                self.model_call_details["input"], result = (
+                    await callback.async_logging_hook(
+                        kwargs=self.model_call_details,
+                        result=result,
+                        call_type=self.call_type,
+                    )
+                )
 
         for callback in callbacks:
             # check if callback can run for this request
@@ -1610,11 +1634,11 @@ class Logging:
                         and self.model_call_details.get("litellm_params", {}).get(
                             "acompletion", False
                         )
-                        == False
+                        is not True
                         and self.model_call_details.get("litellm_params", {}).get(
                             "aembedding", False
                         )
-                        == False
+                        is not True
                     ):  # custom logger class
 
                         callback.log_failure_event(

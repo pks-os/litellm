@@ -1332,6 +1332,9 @@ def client(original_function):
 
             # ADD HIDDEN PARAMS - additional call metadata
             if hasattr(result, "_hidden_params"):
+                result._hidden_params["litellm_call_id"] = getattr(
+                    logging_obj, "litellm_call_id", None
+                )
                 result._hidden_params["model_id"] = kwargs.get("model_info", {}).get(
                     "id", None
                 )
@@ -4829,7 +4832,7 @@ def get_model_info(model: str, custom_llm_provider: Optional[str] = None) -> Mod
                 supports_response_schema=_model_info.get(
                     "supports_response_schema", None
                 ),
-                supports_vision=_model_info.get("supports_vision", None),
+                supports_vision=_model_info.get("supports_vision", False),
             )
     except Exception:
         raise Exception(
@@ -8951,7 +8954,16 @@ class CustomStreamWrapper:
             model_response.system_fingerprint = self.system_fingerprint
         model_response._hidden_params["custom_llm_provider"] = _logging_obj_llm_provider
         model_response._hidden_params["created_at"] = time.time()
-        model_response.choices = [StreamingChoices(finish_reason=None)]
+
+        if (
+            len(model_response.choices) > 0
+            and hasattr(model_response.choices[0], "delta")
+            and model_response.choices[0].delta is not None
+        ):
+            # do nothing, if object instantiated
+            pass
+        else:
+            model_response.choices = [StreamingChoices(finish_reason=None)]
         return model_response
 
     def is_delta_empty(self, delta: Delta) -> bool:
@@ -9892,7 +9904,6 @@ class CustomStreamWrapper:
                     self.rules.post_call_rules(
                         input=self.response_uptil_now, model=self.model
                     )
-                    print_verbose(f"final returned processed chunk: {processed_chunk}")
                     self.chunks.append(processed_chunk)
                     if hasattr(
                         processed_chunk, "usage"
@@ -9906,6 +9917,7 @@ class CustomStreamWrapper:
 
                         # Create a new object without the removed attribute
                         processed_chunk = self.model_response_creator(chunk=obj_dict)
+                    print_verbose(f"final returned processed chunk: {processed_chunk}")
                     return processed_chunk
                 raise StopAsyncIteration
             else:  # temporary patch for non-aiohttp async calls
