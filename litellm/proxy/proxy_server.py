@@ -2,6 +2,7 @@ import ast
 import asyncio
 import copy
 import inspect
+import io
 import os
 import random
 import secrets
@@ -142,7 +143,10 @@ from litellm.proxy.common_utils.encrypt_decrypt_utils import (
     decrypt_value_helper,
     encrypt_value_helper,
 )
-from litellm.proxy.common_utils.http_parsing_utils import _read_request_body
+from litellm.proxy.common_utils.http_parsing_utils import (
+    _read_request_body,
+    check_file_size_under_limit,
+)
 from litellm.proxy.common_utils.init_callbacks import initialize_callbacks_on_proxy
 from litellm.proxy.common_utils.openai_endpoint_utils import (
     remove_sensitive_info_from_deployment,
@@ -3787,74 +3791,76 @@ async def audio_transcriptions(
 
         router_model_names = llm_router.model_names if llm_router is not None else []
 
-        assert (
-            file.filename is not None
-        )  # make sure filename passed in (needed for type)
+        if file.filename is None:
+            raise ProxyException(
+                message="File name is None. Please check your file name",
+                code=status.HTTP_400_BAD_REQUEST,
+                type="bad_request",
+                param="file",
+            )
 
-        _original_filename = file.filename
-        file_extension = os.path.splitext(file.filename)[1]
-        # rename the file to a random hash file name -> we eventuall remove the file and don't want to remove any local files
-        file.filename = f"tmp-request" + str(uuid.uuid4()) + file_extension
+        # Check if File can be read in memory before reading
+        check_file_size_under_limit(
+            request_data=data,
+            file=file,
+            router_model_names=router_model_names,
+        )
 
-        # IMP - Asserts that we've renamed the uploaded file, since we run os.remove(file.filename), we should rename the original file
-        assert file.filename != _original_filename
+        file_content = await file.read()
+        file_object = io.BytesIO(file_content)
+        file_object.name = file.filename
+        data["file"] = file_object
+        try:
+            ### CALL HOOKS ### - modify incoming data / reject request before calling the model
+            data = await proxy_logging_obj.pre_call_hook(
+                user_api_key_dict=user_api_key_dict,
+                data=data,
+                call_type="audio_transcription",
+            )
 
-        with open(file.filename, "wb+") as f:
-            f.write(await file.read())
-            try:
-                data["file"] = open(file.filename, "rb")
-                ### CALL HOOKS ### - modify incoming data / reject request before calling the model
-                data = await proxy_logging_obj.pre_call_hook(
-                    user_api_key_dict=user_api_key_dict,
-                    data=data,
-                    call_type="audio_transcription",
+            ## ROUTE TO CORRECT ENDPOINT ##
+            # skip router if user passed their key
+            if "api_key" in data:
+                response = await litellm.atranscription(**data)
+            elif (
+                llm_router is not None and data["model"] in router_model_names
+            ):  # model in router model list
+                response = await llm_router.atranscription(**data)
+
+            elif (
+                llm_router is not None and data["model"] in llm_router.deployment_names
+            ):  # model in router deployments, calling a specific deployment on the router
+                response = await llm_router.atranscription(
+                    **data, specific_deployment=True
                 )
-
-                ## ROUTE TO CORRECT ENDPOINT ##
-                # skip router if user passed their key
-                if "api_key" in data:
-                    response = await litellm.atranscription(**data)
-                elif (
-                    llm_router is not None and data["model"] in router_model_names
-                ):  # model in router model list
-                    response = await llm_router.atranscription(**data)
-
-                elif (
-                    llm_router is not None
-                    and data["model"] in llm_router.deployment_names
-                ):  # model in router deployments, calling a specific deployment on the router
-                    response = await llm_router.atranscription(
-                        **data, specific_deployment=True
-                    )
-                elif (
-                    llm_router is not None
-                    and llm_router.model_group_alias is not None
-                    and data["model"] in llm_router.model_group_alias
-                ):  # model set in model_group_alias
-                    response = await llm_router.atranscription(
-                        **data
-                    )  # ensure this goes the llm_router, router will do the correct alias mapping
-                elif (
-                    llm_router is not None
-                    and data["model"] not in router_model_names
-                    and llm_router.default_deployment is not None
-                ):  # model in router deployments, calling a specific deployment on the router
-                    response = await llm_router.atranscription(**data)
-                elif user_model is not None:  # `litellm --model <your-model-name>`
-                    response = await litellm.atranscription(**data)
-                else:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail={
-                            "error": "audio_transcriptions: Invalid model name passed in model="
-                            + data.get("model", "")
-                        },
-                    )
-
-            except Exception as e:
-                raise HTTPException(status_code=500, detail=str(e))
-            finally:
-                os.remove(file.filename)  # Delete the saved file
+            elif (
+                llm_router is not None
+                and llm_router.model_group_alias is not None
+                and data["model"] in llm_router.model_group_alias
+            ):  # model set in model_group_alias
+                response = await llm_router.atranscription(
+                    **data
+                )  # ensure this goes the llm_router, router will do the correct alias mapping
+            elif (
+                llm_router is not None
+                and data["model"] not in router_model_names
+                and llm_router.default_deployment is not None
+            ):  # model in router deployments, calling a specific deployment on the router
+                response = await llm_router.atranscription(**data)
+            elif user_model is not None:  # `litellm --model <your-model-name>`
+                response = await litellm.atranscription(**data)
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={
+                        "error": "audio_transcriptions: Invalid model name passed in model="
+                        + data.get("model", "")
+                    },
+                )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            file_object.close()  # close the file read in by io library
 
         ### ALERTING ###
         asyncio.create_task(
@@ -5474,8 +5480,19 @@ async def new_end_user(
 ):
     """
     Allow creating a new Customer 
-    NOTE: This used to be called `/end_user/new`, we will still be maintaining compatibility for /end_user/XXX for these endpoints
 
+
+    Parameters:
+    - user_id: str - The unique identifier for the user.
+    - alias: Optional[str] - A human-friendly alias for the user.
+    - blocked: bool - Flag to allow or disallow requests for this end-user. Default is False.
+    - max_budget: Optional[float] - The maximum budget allocated to the user. Either 'max_budget' or 'budget_id' should be provided, not both.
+    - budget_id: Optional[str] - The identifier for an existing budget allocated to the user. Either 'max_budget' or 'budget_id' should be provided, not both.
+    - allowed_model_region: Optional[Literal["eu"]] - Require all user requests to use models in this specific region.
+    - default_model: Optional[str] - If no equivalent model in the allowed region, default all requests to this model.
+    - metadata: Optional[dict] = Metadata for customer, store information for customer. Example metadata = {"data_training_opt_out": True}
+    
+    
     - Allow specifying allowed regions 
     - Allow specifying default model
 
@@ -5493,6 +5510,8 @@ async def new_end_user(
 
         # return end-user object
     ```
+
+    NOTE: This used to be called `/end_user/new`, we will still be maintaining compatibility for /end_user/XXX for these endpoints
     """
     global prisma_client, llm_router
     """
