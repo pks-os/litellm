@@ -38,7 +38,7 @@ success_callback: List[Union[str, Callable]] = []
 failure_callback: List[Union[str, Callable]] = []
 service_callback: List[Union[str, Callable]] = []
 _custom_logger_compatible_callbacks_literal = Literal[
-    "lago", "openmeter", "logfire", "dynamic_rate_limiter"
+    "lago", "openmeter", "logfire", "dynamic_rate_limiter", "langsmith", "galileo"
 ]
 callbacks: List[Union[Callable, _custom_logger_compatible_callbacks_literal]] = []
 _langfuse_default_tags: Optional[
@@ -757,6 +757,7 @@ openai_image_generation_models = ["dall-e-2", "dall-e-3"]
 from .timeout import timeout
 from .cost_calculator import completion_cost
 from litellm.litellm_core_utils.litellm_logging import Logging
+from litellm.litellm_core_utils.core_helpers import remove_index_from_tool_calls
 from litellm.litellm_core_utils.token_counter import get_modified_max_tokens
 from .utils import (
     client,
