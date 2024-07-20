@@ -1,23 +1,10 @@
 model_list:
-  - model_name: fake-openai-endpoint
+  - model_name: fireworks-llama-v3-70b-instruct
     litellm_params:
-      model: openai/fake
-      api_key: fake-key
-      api_base: https://exampleopenaiendpoint-production.up.railway.app/
-  - model_name: gemini-flash
-    litellm_params:
-      model: gemini/gemini-1.5-flash
-  - model_name: whisper
-    litellm_params:
-      model: whisper-1
-      api_key: sk-*******
-      max_file_size_mb: 1000
-    model_info:
-      mode: audio_transcription
+      model: fireworks_ai/accounts/fireworks/models/llama-v3-70b-instruct
+      api_key: "os.environ/FIREWORKS_AI_API_KEY"
 
+router_settings:
+  enable_tag_filtering: True # 👈 Key Change
 general_settings: 
-  master_key: sk-1234 
-
-litellm_settings:
-  success_callback: ["langsmith"]
-
+  master_key: sk-1234

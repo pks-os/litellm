@@ -735,6 +735,7 @@ def completion(
     ]
     litellm_params = [
         "metadata",
+        "tags",
         "acompletion",
         "atext_completion",
         "text_completion",
@@ -1528,6 +1529,8 @@ def completion(
                     api_key=api_key,
                     logging_obj=logging,
                     headers=headers,
+                    timeout=timeout,
+                    client=client,
                 )
             if optional_params.get("stream", False) or acompletion == True:
                 ## LOGGING
@@ -2046,7 +2049,10 @@ def completion(
                     acompletion=acompletion,
                     headers=headers,
                     custom_prompt_dict=custom_prompt_dict,
+                    timeout=timeout,
+                    client=client,
                 )
+
             else:
                 model_response = vertex_ai.completion(
                     model=model,
@@ -3150,6 +3156,7 @@ def embedding(
         "allowed_model_region",
         "model_config",
         "cooldown_time",
+        "tags",
     ]
     default_params = openai_params + litellm_params
     non_default_params = {
@@ -4379,6 +4386,8 @@ def transcription(
     proxy_server_request = kwargs.get("proxy_server_request", None)
     model_info = kwargs.get("model_info", None)
     metadata = kwargs.get("metadata", {})
+    tags = kwargs.pop("tags", [])
+
     drop_params = kwargs.get("drop_params", None)
     client: Optional[
         Union[
@@ -4551,6 +4560,7 @@ def speech(
 ) -> HttpxBinaryResponseContent:
 
     model, custom_llm_provider, dynamic_api_key, api_base = get_llm_provider(model=model, custom_llm_provider=custom_llm_provider, api_base=api_base)  # type: ignore
+    tags = kwargs.pop("tags", [])
 
     optional_params = {}
     if response_format is not None:
@@ -4788,9 +4798,10 @@ async def ahealth_check(
         if isinstance(stack_trace, str):
             stack_trace = stack_trace[:1000]
         if model not in litellm.model_cost and mode is None:
-            raise Exception(
-                "Missing `mode`. Set the `mode` for the model - https://docs.litellm.ai/docs/proxy/health#embedding-models"
-            )
+            return {
+                "error": "Missing `mode`. Set the `mode` for the model - https://docs.litellm.ai/docs/proxy/health#embedding-models"
+            }
+
         error_to_return = str(e) + " stack trace: " + stack_trace
         return {"error": error_to_return}
 

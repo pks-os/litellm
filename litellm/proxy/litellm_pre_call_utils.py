@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from fastapi import Request
 
 from litellm._logging import verbose_logger, verbose_proxy_logger
-from litellm.proxy._types import UserAPIKeyAuth
+from litellm.proxy._types import CommonProxyErrors, UserAPIKeyAuth
 from litellm.types.utils import SupportedCacheControls
 
 if TYPE_CHECKING:
@@ -75,7 +75,7 @@ async def add_litellm_data_to_request(
         dict: The modified data dictionary.
 
     """
-    from litellm.proxy.proxy_server import premium_user
+    from litellm.proxy.proxy_server import llm_router, premium_user
 
     safe_add_api_version_from_query_params(data, request)
 
@@ -94,15 +94,6 @@ async def add_litellm_data_to_request(
     if cache_control_header:
         cache_dict = parse_cache_control(cache_control_header)
         data["ttl"] = cache_dict.get("s-maxage")
-
-    ### KEY-LEVEL CACHNG
-    key_metadata = user_api_key_dict.metadata
-    if "cache" in key_metadata:
-        data["cache"] = {}
-        if isinstance(key_metadata["cache"], dict):
-            for k, v in key_metadata["cache"].items():
-                if k in SupportedCacheControls:
-                    data["cache"][k] = v
 
     verbose_proxy_logger.debug("receiving data: %s", data)
 
@@ -132,6 +123,15 @@ async def add_litellm_data_to_request(
     data[_metadata_variable_name]["user_api_key_team_alias"] = getattr(
         user_api_key_dict, "team_alias", None
     )
+
+    ### KEY-LEVEL Contorls
+    key_metadata = user_api_key_dict.metadata
+    if "cache" in key_metadata:
+        data["cache"] = {}
+        if isinstance(key_metadata["cache"], dict):
+            for k, v in key_metadata["cache"].items():
+                if k in SupportedCacheControls:
+                    data["cache"][k] = v
 
     # Team spend, budget - used by prometheus.py
     data[_metadata_variable_name][
@@ -166,7 +166,8 @@ async def add_litellm_data_to_request(
     if user_api_key_dict.allowed_model_region is not None:
         data["allowed_model_region"] = user_api_key_dict.allowed_model_region
 
-    ## [Enterprise Only] Add User-IP Address
+    ## [Enterprise Only]
+    # Add User-IP Address
     requester_ip_address = ""
     if premium_user is True:
         # Only set the IP Address for Enterprise Users
@@ -178,6 +179,18 @@ async def add_litellm_data_to_request(
         ):
             requester_ip_address = request.client.host
     data[_metadata_variable_name]["requester_ip_address"] = requester_ip_address
+
+    # Enterprise Only - Check if using tag based routing
+    if llm_router and llm_router.enable_tag_filtering is True:
+        if premium_user is not True:
+            verbose_proxy_logger.warning(
+                "router.enable_tag_filtering is on %s \n switched off router.enable_tag_filtering",
+                CommonProxyErrors.not_premium_user.value,
+            )
+            llm_router.enable_tag_filtering = False
+        else:
+            if "tags" in data:
+                data[_metadata_variable_name]["tags"] = data["tags"]
 
     ### TEAM-SPECIFIC PARAMS ###
     if user_api_key_dict.team_id is not None:

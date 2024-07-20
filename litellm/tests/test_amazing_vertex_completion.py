@@ -36,6 +36,20 @@ litellm.cache = None
 user_message = "Write a short poem about the sky"
 messages = [{"content": user_message, "role": "user"}]
 
+VERTEX_MODELS_TO_NOT_TEST = [
+    "medlm-medium",
+    "medlm-large",
+    "code-gecko",
+    "code-gecko@001",
+    "code-gecko@002",
+    "code-gecko@latest",
+    "codechat-bison@latest",
+    "code-bison@001",
+    "text-bison@001",
+    "gemini-1.5-pro",
+    "gemini-1.5-pro-preview-0215",
+]
+
 
 def get_vertex_ai_creds_json() -> dict:
     # Define the path to the vertex_key.json file
@@ -327,17 +341,7 @@ def test_vertex_ai():
     test_models += litellm.vertex_language_models  # always test gemini-pro
     for model in test_models:
         try:
-            if model in [
-                "code-gecko",
-                "code-gecko@001",
-                "code-gecko@002",
-                "code-gecko@latest",
-                "codechat-bison@latest",
-                "code-bison@001",
-                "text-bison@001",
-                "gemini-1.5-pro",
-                "gemini-1.5-pro-preview-0215",
-            ] or (
+            if model in VERTEX_MODELS_TO_NOT_TEST or (
                 "gecko" in model or "32k" in model or "ultra" in model or "002" in model
             ):
                 # our account does not have access to this model
@@ -382,17 +386,7 @@ def test_vertex_ai_stream():
     test_models += litellm.vertex_language_models  # always test gemini-pro
     for model in test_models:
         try:
-            if model in [
-                "code-gecko",
-                "code-gecko@001",
-                "code-gecko@002",
-                "code-gecko@latest",
-                "codechat-bison@latest",
-                "code-bison@001",
-                "text-bison@001",
-                "gemini-1.5-pro",
-                "gemini-1.5-pro-preview-0215",
-            ] or (
+            if model in VERTEX_MODELS_TO_NOT_TEST or (
                 "gecko" in model or "32k" in model or "ultra" in model or "002" in model
             ):
                 # our account does not have access to this model
@@ -437,17 +431,9 @@ async def test_async_vertexai_response():
     test_models += litellm.vertex_language_models  # always test gemini-pro
     for model in test_models:
         print(f"model being tested in async call: {model}")
-        if model in [
-            "code-gecko",
-            "code-gecko@001",
-            "code-gecko@002",
-            "code-gecko@latest",
-            "codechat-bison@latest",
-            "code-bison@001",
-            "text-bison@001",
-            "gemini-1.5-pro",
-            "gemini-1.5-pro-preview-0215",
-        ] or ("gecko" in model or "32k" in model or "ultra" in model or "002" in model):
+        if model in VERTEX_MODELS_TO_NOT_TEST or (
+            "gecko" in model or "32k" in model or "ultra" in model or "002" in model
+        ):
             # our account does not have access to this model
             continue
         try:
@@ -484,17 +470,9 @@ async def test_async_vertexai_streaming_response():
     test_models = random.sample(test_models, 1)
     test_models += litellm.vertex_language_models  # always test gemini-pro
     for model in test_models:
-        if model in [
-            "code-gecko",
-            "code-gecko@001",
-            "code-gecko@002",
-            "code-gecko@latest",
-            "codechat-bison@latest",
-            "code-bison@001",
-            "text-bison@001",
-            "gemini-1.5-pro",
-            "gemini-1.5-pro-preview-0215",
-        ] or ("gecko" in model or "32k" in model or "ultra" in model or "002" in model):
+        if model in VERTEX_MODELS_TO_NOT_TEST or (
+            "gecko" in model or "32k" in model or "ultra" in model or "002" in model
+        ):
             # our account does not have access to this model
             continue
         try:
@@ -1150,6 +1128,39 @@ def vertex_httpx_mock_post_valid_response(*args, **kwargs):
     return mock_response
 
 
+def vertex_httpx_mock_post_valid_response_anthropic(*args, **kwargs):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "application/json"}
+    mock_response.json.return_value = {
+        "id": "msg_vrtx_013Wki5RFQXAspL7rmxRFjZg",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-3-5-sonnet-20240620",
+        "content": [
+            {
+                "type": "tool_use",
+                "id": "toolu_vrtx_01YMnYZrToPPfcmY2myP2gEB",
+                "name": "json_tool_call",
+                "input": {
+                    "values": [
+                        {"recipe_name": "Chocolate Chip Cookies"},
+                        {"recipe_name": "Oatmeal Raisin Cookies"},
+                        {"recipe_name": "Peanut Butter Cookies"},
+                        {"recipe_name": "Snickerdoodle Cookies"},
+                        {"recipe_name": "Sugar Cookies"},
+                    ]
+                },
+            }
+        ],
+        "stop_reason": "tool_use",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 368, "output_tokens": 118},
+    }
+
+    return mock_response
+
+
 def vertex_httpx_mock_post_invalid_schema_response(*args, **kwargs):
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -1205,11 +1216,29 @@ def vertex_httpx_mock_post_invalid_schema_response(*args, **kwargs):
     return mock_response
 
 
+def vertex_httpx_mock_post_invalid_schema_response_anthropic(*args, **kwargs):
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "application/json"}
+    mock_response.json.return_value = {
+        "id": "msg_vrtx_013Wki5RFQXAspL7rmxRFjZg",
+        "type": "message",
+        "role": "assistant",
+        "model": "claude-3-5-sonnet-20240620",
+        "content": [{"text": "Hi! My name is Claude.", "type": "text"}],
+        "stop_reason": "end_turn",
+        "stop_sequence": None,
+        "usage": {"input_tokens": 368, "output_tokens": 118},
+    }
+    return mock_response
+
+
 @pytest.mark.parametrize(
     "model, vertex_location, supports_response_schema",
     [
         ("vertex_ai_beta/gemini-1.5-pro-001", "us-central1", True),
         ("vertex_ai_beta/gemini-1.5-flash", "us-central1", False),
+        ("vertex_ai/claude-3-5-sonnet@20240620", "us-east5", False),
     ],
 )
 @pytest.mark.parametrize(
@@ -1253,12 +1282,21 @@ async def test_gemini_pro_json_schema_args_sent_httpx(
 
     httpx_response = MagicMock()
     if invalid_response is True:
-        httpx_response.side_effect = vertex_httpx_mock_post_invalid_schema_response
+        if "claude" in model:
+            httpx_response.side_effect = (
+                vertex_httpx_mock_post_invalid_schema_response_anthropic
+            )
+        else:
+            httpx_response.side_effect = vertex_httpx_mock_post_invalid_schema_response
     else:
-        httpx_response.side_effect = vertex_httpx_mock_post_valid_response
+        if "claude" in model:
+            httpx_response.side_effect = vertex_httpx_mock_post_valid_response_anthropic
+        else:
+            httpx_response.side_effect = vertex_httpx_mock_post_valid_response
     with patch.object(client, "post", new=httpx_response) as mock_call:
+        print("SENDING CLIENT POST={}".format(client.post))
         try:
-            _ = completion(
+            resp = completion(
                 model=model,
                 messages=messages,
                 response_format={
@@ -1269,30 +1307,34 @@ async def test_gemini_pro_json_schema_args_sent_httpx(
                 vertex_location=vertex_location,
                 client=client,
             )
+            print("Received={}".format(resp))
             if invalid_response is True and enforce_validation is True:
                 pytest.fail("Expected this to fail")
         except litellm.JSONSchemaValidationError as e:
-            if invalid_response is False and "claude-3" not in model:
+            if invalid_response is False:
                 pytest.fail("Expected this to pass. Got={}".format(e))
 
         mock_call.assert_called_once()
-        print(mock_call.call_args.kwargs)
-        print(mock_call.call_args.kwargs["json"]["generationConfig"])
+        if "claude" not in model:
+            print(mock_call.call_args.kwargs)
+            print(mock_call.call_args.kwargs["json"]["generationConfig"])
 
-        if supports_response_schema:
-            assert (
-                "response_schema"
-                in mock_call.call_args.kwargs["json"]["generationConfig"]
-            )
-        else:
-            assert (
-                "response_schema"
-                not in mock_call.call_args.kwargs["json"]["generationConfig"]
-            )
-            assert (
-                "Use this JSON schema:"
-                in mock_call.call_args.kwargs["json"]["contents"][0]["parts"][1]["text"]
-            )
+            if supports_response_schema:
+                assert (
+                    "response_schema"
+                    in mock_call.call_args.kwargs["json"]["generationConfig"]
+                )
+            else:
+                assert (
+                    "response_schema"
+                    not in mock_call.call_args.kwargs["json"]["generationConfig"]
+                )
+                assert (
+                    "Use this JSON schema:"
+                    in mock_call.call_args.kwargs["json"]["contents"][0]["parts"][1][
+                        "text"
+                    ]
+                )
 
 
 @pytest.mark.parametrize("provider", ["vertex_ai_beta"])  # "vertex_ai",

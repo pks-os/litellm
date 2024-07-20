@@ -2255,15 +2255,6 @@
         "litellm_provider": "cohere",
         "mode": "completion"
     },
-    "replicate/llama-2-70b-chat:2c1608e18606fad2812020dc541930f2d0495ce32eee50074220b87300bc16e1": {
-        "max_tokens": 4096, 
-        "max_input_tokens": 4096,
-        "max_output_tokens": 4096,
-        "input_cost_per_token": 0.0000,
-        "output_cost_per_token": 0.0000,
-        "litellm_provider": "replicate",
-        "mode": "chat"
-    },
     "replicate/meta/llama-2-13b": {
         "max_tokens": 4096,
         "max_input_tokens": 4096,
@@ -2811,6 +2802,16 @@
         "output_cost_per_token": 0.0000188,
         "litellm_provider": "bedrock",
         "mode": "chat"
+    },
+    "ai21.jamba-instruct-v1:0": {
+        "max_tokens": 4096,
+        "max_input_tokens": 70000,
+        "max_output_tokens": 4096,
+        "input_cost_per_token": 0.0000005,
+        "output_cost_per_token": 0.0000007,
+        "litellm_provider": "bedrock",
+        "mode": "chat",
+        "supports_system_messages": true
     },
     "amazon.titan-text-lite-v1": {
         "max_tokens": 4000, 

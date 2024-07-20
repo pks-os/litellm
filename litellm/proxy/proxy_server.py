@@ -1734,9 +1734,7 @@ class ProxyConfig:
                 "background_health_checks", False
             )
             health_check_interval = general_settings.get("health_check_interval", 300)
-            health_check_details = general_settings.get(
-                "health_check_details", True
-            )
+            health_check_details = general_settings.get("health_check_details", True)
 
             ## check if user has set a premium feature in general_settings
             if (
@@ -2606,6 +2604,9 @@ async def startup_event():
     ### CHECK IF VIEW EXISTS ###
     if prisma_client is not None:
         create_view_response = await prisma_client.check_view_exists()
+        # Apply misc fixes on DB
+        # [non-blocking] helper to apply fixes from older litellm versions
+        asyncio.create_task(prisma_client.apply_db_fixes())
 
     ### START BATCH WRITING DB + CHECKING NEW MODELS###
     if prisma_client is not None:
@@ -7793,7 +7794,7 @@ async def login(request: Request):
                 request_type="key",
                 **{
                     "user_role": LitellmUserRoles.PROXY_ADMIN,
-                    "duration": "2hr",
+                    "duration": "24hr",
                     "key_max_budget": 5,
                     "models": [],
                     "aliases": {},
@@ -7857,7 +7858,7 @@ async def login(request: Request):
                     request_type="key",
                     **{  # type: ignore
                         "user_role": user_role,
-                        "duration": "2hr",
+                        "duration": "24hr",
                         "key_max_budget": 5,
                         "models": [],
                         "aliases": {},
@@ -7998,7 +7999,7 @@ async def onboarding(invite_link: str):
         request_type="key",
         **{
             "user_role": user_obj.user_role,
-            "duration": "2hr",
+            "duration": "24hr",
             "key_max_budget": 5,
             "models": [],
             "aliases": {},
@@ -8336,7 +8337,7 @@ async def auth_callback(request: Request):
     # User might not be already created on first generation of key
     # But if it is, we want their models preferences
     default_ui_key_values = {
-        "duration": "2hr",
+        "duration": "24hr",
         "key_max_budget": 0.01,
         "aliases": {},
         "config": {},
