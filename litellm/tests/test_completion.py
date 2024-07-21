@@ -142,6 +142,36 @@ def test_completion_azure_ai_command_r():
         pytest.fail(f"Error occurred: {e}")
 
 
+@pytest.mark.parametrize("sync_mode", [True, False])
+@pytest.mark.asyncio
+async def test_completion_azure_ai_mistral_invalid_params(sync_mode):
+    try:
+        import os
+
+        litellm.set_verbose = True
+
+        os.environ["AZURE_AI_API_BASE"] = os.getenv("AZURE_MISTRAL_API_BASE", "")
+        os.environ["AZURE_AI_API_KEY"] = os.getenv("AZURE_MISTRAL_API_KEY", "")
+
+        data = {
+            "model": "azure_ai/mistral",
+            "messages": [{"role": "user", "content": "What is the meaning of life?"}],
+            "frequency_penalty": 0.1,
+            "presence_penalty": 0.1,
+            "drop_params": True,
+        }
+        if sync_mode:
+            response: litellm.ModelResponse = completion(**data)  # type: ignore
+        else:
+            response: litellm.ModelResponse = await litellm.acompletion(**data)  # type: ignore
+
+        assert "azure_ai" in response.model
+    except litellm.Timeout as e:
+        pass
+    except Exception as e:
+        pytest.fail(f"Error occurred: {e}")
+
+
 def test_completion_azure_command_r():
     try:
         litellm.set_verbose = True
@@ -1348,7 +1378,10 @@ def test_completion_fireworks_ai():
         pytest.fail(f"Error occurred: {e}")
 
 
-def test_completion_fireworks_ai_bad_api_base():
+@pytest.mark.parametrize(
+    "api_key, api_base", [(None, "my-bad-api-base"), ("my-bad-api-key", None)]
+)
+def test_completion_fireworks_ai_dynamic_params(api_key, api_base):
     try:
         litellm.set_verbose = True
         messages = [
@@ -1361,7 +1394,8 @@ def test_completion_fireworks_ai_bad_api_base():
         response = completion(
             model="fireworks_ai/accounts/fireworks/models/mixtral-8x7b-instruct",
             messages=messages,
-            api_base="my-bad-api-base",
+            api_base=api_base,
+            api_key=api_key,
         )
         pytest.fail(f"This call should have failed!")
     except Exception as e:
