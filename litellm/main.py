@@ -375,6 +375,7 @@ async def acompletion(
             or custom_llm_provider == "predibase"
             or custom_llm_provider == "bedrock"
             or custom_llm_provider == "databricks"
+            or custom_llm_provider == "triton"
             or custom_llm_provider == "clarifai"
             or custom_llm_provider == "watsonx"
             or custom_llm_provider in litellm.openai_compatible_providers
@@ -1491,6 +1492,10 @@ def completion(
                     or get_secret("ANTHROPIC_BASE_URL")
                     or "https://api.anthropic.com/v1/complete"
                 )
+
+                if api_base is not None and not api_base.endswith("/v1/complete"):
+                    api_base += "/v1/complete"
+
                 response = anthropic_text_completions.completion(
                     model=model,
                     messages=messages,
@@ -1517,6 +1522,10 @@ def completion(
                     or get_secret("ANTHROPIC_BASE_URL")
                     or "https://api.anthropic.com/v1/messages"
                 )
+
+                if api_base is not None and not api_base.endswith("/v1/messages"):
+                    api_base += "/v1/messages"
+
                 response = anthropic_chat_completions.completion(
                     model=model,
                     messages=messages,
@@ -2469,6 +2478,28 @@ def completion(
                 return generator
 
             response = generator
+        
+        elif custom_llm_provider == "triton":
+            api_base = (
+                litellm.api_base  or api_base
+            )
+            model_response = triton_chat_completions.completion(
+            api_base=api_base,
+            timeout=timeout, # type: ignore
+            model=model,
+            messages=messages,
+            model_response=model_response,
+            optional_params=optional_params,
+            logging_obj=logging,
+            stream=stream,
+            acompletion=acompletion
+            )
+
+            ## RESPONSE OBJECT
+            response = model_response
+            return response
+        
+        
         elif custom_llm_provider == "cloudflare":
             api_key = (
                 api_key
