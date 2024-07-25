@@ -196,6 +196,7 @@ def test_openai_azure_embedding():
     except Exception as e:
         pytest.fail(f"Error occurred: {e}")
 
+
 @pytest.mark.skipif(
     os.environ.get("CIRCLE_OIDC_TOKEN") is None,
     reason="Cannot run without being in CircleCI Runner",
@@ -210,7 +211,7 @@ def test_openai_azure_embedding_with_oidc_and_cf():
             model="azure/text-embedding-ada-002",
             input=["Hello"],
             azure_ad_token="oidc/circleci/",
-            api_base="https://gateway.ai.cloudflare.com/v1/0399b10e77ac6668c80404a5ff49eb37/litellm-test/azure-openai/eastus2-litellm",
+            api_base="https://eastus2-litellm.openai.azure.com/",
             api_version="2024-06-01",
         )
         print(response)
@@ -672,3 +673,17 @@ async def test_databricks_embeddings(sync_mode):
 #     print(response)
 
 # local_proxy_embeddings()
+
+
+def test_embedding_azure_ad_token():
+    # this tests if we can pass api_key to completion, when it's not in the env.
+    # DO NOT REMOVE THIS TEST. No MATTER WHAT Happens!
+    # If you want to remove it, speak to Ishaan!
+    # Ishaan will be very disappointed if this test is removed -> this is a standard way to pass api_key + the router + proxy use this
+
+    response = embedding(
+        model="azure/azure-embedding-model",
+        input=["good morning from litellm"],
+        azure_ad_token=os.getenv("AZURE_API_KEY"),
+    )
+    print(response)

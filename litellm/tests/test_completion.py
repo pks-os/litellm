@@ -346,7 +346,7 @@ def test_completion_claude_3_empty_response():
     messages = [
         {
             "role": "system",
-            "content": "You are 2twNLGfqk4GMOn3ffp4p.",
+            "content": [{"type": "text", "text": "You are 2twNLGfqk4GMOn3ffp4p."}],
         },
         {"role": "user", "content": "Hi gm!", "name": "ishaan"},
         {"role": "assistant", "content": "Good morning! How are you doing today?"},
@@ -2558,6 +2558,73 @@ def test_completion_anyscale_with_functions():
 
 
 # test_completion_anyscale_with_functions()
+
+
+def test_completion_azure_extra_headers():
+    # this tests if we can pass api_key to completion, when it's not in the env.
+    # DO NOT REMOVE THIS TEST. No MATTER WHAT Happens!
+    # If you want to remove it, speak to Ishaan!
+    # Ishaan will be very disappointed if this test is removed -> this is a standard way to pass api_key + the router + proxy use this
+    from httpx import Client
+    from openai import AzureOpenAI
+
+    from litellm.llms.custom_httpx.httpx_handler import HTTPHandler
+
+    http_client = Client()
+
+    with patch.object(http_client, "send", new=MagicMock()) as mock_client:
+        client = AzureOpenAI(
+            azure_endpoint=os.getenv("AZURE_API_BASE"),
+            api_version=litellm.AZURE_DEFAULT_API_VERSION,
+            api_key=os.getenv("AZURE_API_KEY"),
+            http_client=http_client,
+        )
+        try:
+            response = completion(
+                model="azure/chatgpt-v-2",
+                messages=messages,
+                client=client,
+                extra_headers={
+                    "Authorization": "my-bad-key",
+                    "Ocp-Apim-Subscription-Key": "hello-world-testing",
+                    "api-key": "my-bad-key",
+                },
+            )
+            print(response)
+            pytest.fail("Expected this to fail")
+        except Exception as e:
+            pass
+
+        mock_client.assert_called()
+
+        print(f"mock_client.call_args: {mock_client.call_args}")
+        request = mock_client.call_args[0][0]
+        print(request.method)  # This will print 'POST'
+        print(request.url)  # This will print the full URL
+        print(request.headers)  # This will print the full URL
+        auth_header = request.headers.get("Authorization")
+        print(auth_header)
+        assert auth_header == "my-bad-key"
+
+
+def test_completion_azure_ad_token():
+    # this tests if we can pass api_key to completion, when it's not in the env.
+    # DO NOT REMOVE THIS TEST. No MATTER WHAT Happens!
+    # If you want to remove it, speak to Ishaan!
+    # Ishaan will be very disappointed if this test is removed -> this is a standard way to pass api_key + the router + proxy use this
+    from httpx import Client
+    from openai import AzureOpenAI
+
+    from litellm import completion
+    from litellm.llms.custom_httpx.httpx_handler import HTTPHandler
+
+    response = completion(
+        model="azure/chatgpt-v-2",
+        messages=messages,
+        # api_key="my-fake-ad-token",
+        azure_ad_token=os.getenv("AZURE_API_KEY"),
+    )
+    print(response)
 
 
 def test_completion_azure_key_completion_arg():
