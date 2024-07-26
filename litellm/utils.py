@@ -2774,7 +2774,7 @@ def get_optional_params(
                 tool_function["parameters"] = new_parameters
 
     def _check_valid_arg(supported_params):
-        verbose_logger.debug(
+        verbose_logger.info(
             f"\nLiteLLM completion() model= {model}; provider = {custom_llm_provider}"
         )
         verbose_logger.debug(
@@ -4486,7 +4486,11 @@ def get_llm_provider(
                     or get_secret("TOGETHER_AI_TOKEN")
                 )
             elif custom_llm_provider == "friendliai":
-                api_base = "https://inference.friendli.ai/v1"
+                api_base = (
+                    api_base
+                    or get_secret("FRIENDLI_API_BASE")
+                    or "https://inference.friendli.ai/v1"
+                )
                 dynamic_api_key = (
                     api_key
                     or get_secret("FRIENDLIAI_API_KEY")
