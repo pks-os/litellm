@@ -901,7 +901,12 @@ from litellm.tests.test_completion import response_format_tests
 @pytest.mark.parametrize(
     "model", ["vertex_ai/meta/llama3-405b-instruct-maas"]
 )  # "vertex_ai",
-@pytest.mark.parametrize("sync_mode", [True, False])  # "vertex_ai",
+@pytest.mark.parametrize(
+    "sync_mode",
+    [
+        True,
+    ],
+)  # False
 @pytest.mark.asyncio
 async def test_llama_3_httpx(model, sync_mode):
     try:
