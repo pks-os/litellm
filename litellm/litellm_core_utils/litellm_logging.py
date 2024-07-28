@@ -529,6 +529,7 @@ class Logging:
                     or isinstance(result, TextCompletionResponse)
                     or isinstance(result, HttpxBinaryResponseContent)  # tts
                 ):
+                    ## RESPONSE COST ##
                     custom_pricing = use_custom_pricing_for_model(
                         litellm_params=self.litellm_params
                     )
@@ -548,6 +549,25 @@ class Logging:
                             custom_pricing=custom_pricing,
                         )
                     )
+
+                    ## HIDDEN PARAMS ##
+                    if hasattr(result, "_hidden_params"):
+                        # add to metadata for logging
+                        if self.model_call_details.get("litellm_params") is not None:
+                            self.model_call_details["litellm_params"].setdefault(
+                                "metadata", {}
+                            )
+                            if (
+                                self.model_call_details["litellm_params"]["metadata"]
+                                is None
+                            ):
+                                self.model_call_details["litellm_params"][
+                                    "metadata"
+                                ] = {}
+
+                            self.model_call_details["litellm_params"]["metadata"][
+                                "hidden_params"
+                            ] = result._hidden_params
             else:  # streaming chunks + image gen.
                 self.model_call_details["response_cost"] = None
 
@@ -1220,7 +1240,9 @@ class Logging:
         """
         Implementing async callbacks, to handle asyncio event loop issues when custom integrations need to use async functions.
         """
-        print_verbose("Logging Details LiteLLM-Async Success Call")
+        print_verbose(
+            "Logging Details LiteLLM-Async Success Call, cache_hit={}".format(cache_hit)
+        )
         start_time, end_time, result = self._success_handler_helper_fn(
             start_time=start_time, end_time=end_time, result=result, cache_hit=cache_hit
         )

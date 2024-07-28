@@ -119,6 +119,7 @@ class OpenTelemetry(CustomLogger):
         parent_otel_span: Optional[Span] = None,
         start_time: Optional[Union[datetime, float]] = None,
         end_time: Optional[Union[datetime, float]] = None,
+        event_metadata: Optional[dict] = None,
     ):
         from datetime import datetime
 
@@ -149,6 +150,10 @@ class OpenTelemetry(CustomLogger):
             service_logging_span.set_attribute(
                 key="service", value=payload.service.value
             )
+
+            if event_metadata:
+                for key, value in event_metadata.items():
+                    service_logging_span.set_attribute(key, value)
             service_logging_span.set_status(Status(StatusCode.OK))
             service_logging_span.end(end_time=_end_time_ns)
 
@@ -463,7 +468,7 @@ class OpenTelemetry(CustomLogger):
         #############################################
 
         # OTEL Attributes for the RAW Request to https://docs.anthropic.com/en/api/messages
-        if complete_input_dict:
+        if complete_input_dict and isinstance(complete_input_dict, dict):
             for param, val in complete_input_dict.items():
                 if not isinstance(val, str):
                     val = str(val)

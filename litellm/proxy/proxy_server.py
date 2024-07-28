@@ -108,6 +108,7 @@ from litellm._logging import verbose_proxy_logger, verbose_router_logger
 from litellm.caching import DualCache, RedisCache
 from litellm.exceptions import RejectedRequestError
 from litellm.integrations.slack_alerting import SlackAlerting, SlackAlertingArgs
+from litellm.litellm_core_utils.core_helpers import get_litellm_metadata_from_kwargs
 from litellm.llms.custom_httpx.httpx_handler import HTTPHandler
 from litellm.proxy._types import *
 from litellm.proxy.analytics_endpoints.analytics_endpoints import (
@@ -123,6 +124,7 @@ from litellm.proxy.auth.auth_checks import (
     get_user_object,
     log_to_opentelemetry,
 )
+from litellm.proxy.auth.auth_utils import check_response_size_is_safe
 from litellm.proxy.auth.handle_jwt import JWTHandler
 from litellm.proxy.auth.litellm_license import LicenseCheck
 from litellm.proxy.auth.model_checks import (
@@ -203,6 +205,7 @@ from litellm.proxy.utils import (
     get_error_message_str,
     get_instance_fn,
     hash_token,
+    log_to_opentelemetry,
     reset_budget,
     send_email,
     update_spend,
@@ -279,6 +282,8 @@ ui_link = f"/ui/"
 ui_message = (
     f"👉 [```LiteLLM Admin Panel on /ui```]({ui_link}). Create, Edit Keys with SSO"
 )
+ui_message += f"\n\n💸 [```LiteLLM Model Cost Map```](https://models.litellm.ai/)."
+
 custom_swagger_message = f"[**Customize Swagger Docs**](https://docs.litellm.ai/docs/proxy/enterprise#swagger-docs---custom-routes--branding)"
 
 ### CUSTOM BRANDING [ENTERPRISE FEATURE] ###
@@ -287,7 +292,7 @@ _title = os.getenv("DOCS_TITLE", "LiteLLM API") if premium_user else "LiteLLM AP
 _description = (
     os.getenv(
         "DOCS_DESCRIPTION",
-        f"Proxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}",
+        f"Enterprise Edition \n\nProxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}",
     )
     if premium_user
     else f"Proxy Server to call 100+ LLMs in the OpenAI format. {custom_swagger_message}\n\n{ui_message}"
@@ -647,6 +652,7 @@ async def _PROXY_failure_handler(
     pass
 
 
+@log_to_opentelemetry
 async def _PROXY_track_cost_callback(
     kwargs,  # kwargs to completion
     completion_response: litellm.ModelResponse,  # response from completion
@@ -668,18 +674,15 @@ async def _PROXY_track_cost_callback(
         litellm_params = kwargs.get("litellm_params", {}) or {}
         proxy_server_request = litellm_params.get("proxy_server_request") or {}
         end_user_id = proxy_server_request.get("body", {}).get("user", None)
-        user_id = kwargs["litellm_params"]["metadata"].get("user_api_key_user_id", None)
-        team_id = kwargs["litellm_params"]["metadata"].get("user_api_key_team_id", None)
-        org_id = kwargs["litellm_params"]["metadata"].get("user_api_key_org_id", None)
-        key_alias = kwargs["litellm_params"]["metadata"].get("user_api_key_alias", None)
-        end_user_max_budget = kwargs["litellm_params"]["metadata"].get(
-            "user_api_end_user_max_budget", None
-        )
+        metadata = get_litellm_metadata_from_kwargs(kwargs=kwargs)
+        user_id = metadata.get("user_api_key_user_id", None)
+        team_id = metadata.get("user_api_key_team_id", None)
+        org_id = metadata.get("user_api_key_org_id", None)
+        key_alias = metadata.get("user_api_key_alias", None)
+        end_user_max_budget = metadata.get("user_api_end_user_max_budget", None)
         if kwargs.get("response_cost", None) is not None:
             response_cost = kwargs["response_cost"]
-            user_api_key = kwargs["litellm_params"]["metadata"].get(
-                "user_api_key", None
-            )
+            user_api_key = metadata.get("user_api_key", None)
 
             if kwargs.get("cache_hit", False) == True:
                 response_cost = 0.0
@@ -1387,7 +1390,9 @@ class ProxyConfig:
         environment_variables = config.get("environment_variables", None)
         if environment_variables:
             for key, value in environment_variables.items():
-                os.environ[key] = value
+                os.environ[key] = str(
+                    litellm.get_secret(secret_name=key, default_value=value)
+                )
 
         ## LITELLM MODULE SETTINGS (e.g. litellm.drop_params=True,..)
         litellm_settings = config.get("litellm_settings", None)
@@ -2996,6 +3001,7 @@ async def chat_completion(
                 **additional_headers,
             )
         )
+        await check_response_size_is_safe(response=response)
 
         return response
     except RejectedRequestError as e:
@@ -3237,7 +3243,7 @@ async def completion(
                 response_cost=response_cost,
             )
         )
-
+        await check_response_size_is_safe(response=response)
         return response
     except RejectedRequestError as e:
         _data = e.request_data
@@ -3487,6 +3493,7 @@ async def embeddings(
                 call_id=litellm_call_id,
             )
         )
+        await check_response_size_is_safe(response=response)
 
         return response
     except Exception as e:
@@ -4808,10 +4815,18 @@ async def create_batch(
     """
     global proxy_logging_obj
     data: Dict = {}
+
     try:
-        # Use orjson to parse JSON data, orjson speeds up requests significantly
-        form_data = await request.form()
-        data = {key: value for key, value in form_data.items() if key != "file"}
+        body = await request.body()
+        body_str = body.decode()
+        try:
+            data = ast.literal_eval(body_str)
+        except:
+            data = json.loads(body_str)
+
+        verbose_proxy_logger.debug(
+            "Request received by LiteLLM:\n{}".format(json.dumps(data, indent=4)),
+        )
 
         # Include original request and headers in the data
         data = await add_litellm_data_to_request(
@@ -4883,12 +4898,12 @@ async def create_batch(
 
 
 @router.get(
-    "/v1/batches{batch_id}",
+    "/v1/batches{batch_id:path}",
     dependencies=[Depends(user_api_key_auth)],
     tags=["batch"],
 )
 @router.get(
-    "/batches{batch_id}",
+    "/batches{batch_id:path}",
     dependencies=[Depends(user_api_key_auth)],
     tags=["batch"],
 )
@@ -4916,20 +4931,6 @@ async def retrieve_batch(
     global proxy_logging_obj
     data: Dict = {}
     try:
-        # Use orjson to parse JSON data, orjson speeds up requests significantly
-        form_data = await request.form()
-        data = {key: value for key, value in form_data.items() if key != "file"}
-
-        # Include original request and headers in the data
-        data = await add_litellm_data_to_request(
-            data=data,
-            request=request,
-            general_settings=general_settings,
-            user_api_key_dict=user_api_key_dict,
-            version=version,
-            proxy_config=proxy_config,
-        )
-
         _retrieve_batch_request = RetrieveBatchRequest(
             batch_id=batch_id,
         )
