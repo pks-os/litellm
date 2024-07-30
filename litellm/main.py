@@ -413,11 +413,6 @@ async def acompletion(
             )  # sets the logging event loop if the user does sync streaming (e.g. on proxy for sagemaker calls)
         return response
     except Exception as e:
-        verbose_logger.error(
-            "litellm.acompletion(): Exception occured - {}\n{}".format(
-                str(e), traceback.format_exc()
-            )
-        )
         verbose_logger.debug(traceback.format_exc())
         custom_llm_provider = custom_llm_provider or "openai"
         raise exception_type(
@@ -499,6 +494,16 @@ def mock_completion(
                 status_code=getattr(mock_response, "status_code", 429),  # type: ignore
                 llm_provider=getattr(mock_response, "llm_provider", custom_llm_provider or "openai"),  # type: ignore
                 model=model,
+            )
+        elif isinstance(mock_response, str) and mock_response.startswith(
+            "Exception: content_filter_policy"
+        ):
+            raise litellm.MockException(
+                status_code=400,
+                message=mock_response,
+                llm_provider="azure",
+                model=model,  # type: ignore
+                request=httpx.Request(method="POST", url="https://api.openai.com/v1/"),
             )
         time_delay = kwargs.get("mock_delay", None)
         if time_delay is not None:
@@ -2786,6 +2791,7 @@ def completion_with_retries(*args, **kwargs):
 
 async def acompletion_with_retries(*args, **kwargs):
     """
+    [DEPRECATED]. Use 'acompletion' or router.acompletion instead!
     Executes a litellm.completion() with 3 retries
     """
     try:
