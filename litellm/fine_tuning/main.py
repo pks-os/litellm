@@ -1,13 +1,11 @@
 """
-Main File for Batches API implementation
+Main File for Fine Tuning API implementation
 
-https://platform.openai.com/docs/api-reference/batch
+https://platform.openai.com/docs/api-reference/fine-tuning
 
-- create_batch()
-- retrieve_batch()
-- cancel_batch()
-- list_batch()
-
+- fine_tuning.jobs.create()
+- fine_tuning.jobs.list()
+- client.fine_tuning.jobs.list_events()
 """
 
 import asyncio
@@ -19,54 +17,52 @@ from typing import Any, Coroutine, Dict, Literal, Optional, Union
 import httpx
 
 import litellm
-from litellm import client
-from litellm.llms.openai import OpenAIBatchesAPI, OpenAIFilesAPI
-from litellm.types.llms.openai import (
-    Batch,
-    CancelBatchRequest,
-    CreateBatchRequest,
-    CreateFileRequest,
-    FileContentRequest,
-    FileObject,
-    FileTypes,
-    HttpxBinaryResponseContent,
-    RetrieveBatchRequest,
+from litellm.llms.openai_fine_tuning.openai import (
+    FineTuningJob,
+    FineTuningJobCreate,
+    OpenAIFineTuningAPI,
 )
-from litellm.types.router import GenericLiteLLMParams
+from litellm.types.llms.openai import Hyperparameters
+from litellm.types.router import *
 from litellm.utils import supports_httpx_timeout
 
 ####### ENVIRONMENT VARIABLES ###################
-openai_batches_instance = OpenAIBatchesAPI()
+openai_fine_tuning_instance = OpenAIFineTuningAPI()
 #################################################
 
 
-async def acreate_batch(
-    completion_window: Literal["24h"],
-    endpoint: Literal["/v1/chat/completions", "/v1/embeddings", "/v1/completions"],
-    input_file_id: str,
+async def acreate_fine_tuning_job(
+    model: str,
+    training_file: str,
+    hyperparameters: Optional[Hyperparameters] = {},  # type: ignore
+    suffix: Optional[str] = None,
+    validation_file: Optional[str] = None,
+    integrations: Optional[List[str]] = None,
+    seed: Optional[int] = None,
     custom_llm_provider: Literal["openai"] = "openai",
-    metadata: Optional[Dict[str, str]] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     extra_body: Optional[Dict[str, str]] = None,
     **kwargs,
-) -> Batch:
+) -> FineTuningJob:
     """
     Async: Creates and executes a batch from an uploaded file of request
 
-    LiteLLM Equivalent of POST: https://api.openai.com/v1/batches
     """
     try:
         loop = asyncio.get_event_loop()
-        kwargs["acreate_batch"] = True
+        kwargs["acreate_fine_tuning_job"] = True
 
         # Use a partial function to pass your keyword arguments
         func = partial(
-            create_batch,
-            completion_window,
-            endpoint,
-            input_file_id,
+            create_fine_tuning_job,
+            model,
+            training_file,
+            hyperparameters,
+            suffix,
+            validation_file,
+            integrations,
+            seed,
             custom_llm_provider,
-            metadata,
             extra_headers,
             extra_body,
             **kwargs,
@@ -80,26 +76,29 @@ async def acreate_batch(
             response = await init_response
         else:
             response = init_response  # type: ignore
-
         return response
     except Exception as e:
         raise e
 
 
-def create_batch(
-    completion_window: Literal["24h"],
-    endpoint: Literal["/v1/chat/completions", "/v1/embeddings", "/v1/completions"],
-    input_file_id: str,
+def create_fine_tuning_job(
+    model: str,
+    training_file: str,
+    hyperparameters: Optional[Hyperparameters] = {},  # type: ignore
+    suffix: Optional[str] = None,
+    validation_file: Optional[str] = None,
+    integrations: Optional[List[str]] = None,
+    seed: Optional[int] = None,
     custom_llm_provider: Literal["openai"] = "openai",
-    metadata: Optional[Dict[str, str]] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     extra_body: Optional[Dict[str, str]] = None,
     **kwargs,
-) -> Union[Batch, Coroutine[Any, Any, Batch]]:
+) -> Union[FineTuningJob, Coroutine[Any, Any, FineTuningJob]]:
     """
-    Creates and executes a batch from an uploaded file of request
+    Creates a fine-tuning job which begins the process of creating a new model from a given dataset.
 
-    LiteLLM Equivalent of POST: https://api.openai.com/v1/batches
+    Response includes details of the enqueued job including job status and the name of the fine-tuned models once complete
+
     """
     try:
         optional_params = GenericLiteLLMParams(**kwargs)
@@ -143,22 +142,23 @@ def create_batch(
             elif timeout is None:
                 timeout = 600.0
 
-            _is_async = kwargs.pop("acreate_batch", False) is True
+            _is_async = kwargs.pop("acreate_fine_tuning_job", False) is True
 
-            _create_batch_request = CreateBatchRequest(
-                completion_window=completion_window,
-                endpoint=endpoint,
-                input_file_id=input_file_id,
-                metadata=metadata,
-                extra_headers=extra_headers,
-                extra_body=extra_body,
+            create_fine_tuning_job_data = FineTuningJobCreate(
+                model=model,
+                training_file=training_file,
+                hyperparameters=hyperparameters,
+                suffix=suffix,
+                validation_file=validation_file,
+                integrations=integrations,
+                seed=seed,
             )
 
-            response = openai_batches_instance.create_batch(
+            response = openai_fine_tuning_instance.create_fine_tuning_job(
                 api_base=api_base,
                 api_key=api_key,
                 organization=organization,
-                create_batch_data=_create_batch_request,
+                create_fine_tuning_job_data=create_fine_tuning_job_data,
                 timeout=timeout,
                 max_retries=optional_params.max_retries,
                 _is_async=_is_async,
@@ -181,29 +181,25 @@ def create_batch(
         raise e
 
 
-async def aretrieve_batch(
-    batch_id: str,
+async def acancel_fine_tuning_job(
+    fine_tuning_job_id: str,
     custom_llm_provider: Literal["openai"] = "openai",
-    metadata: Optional[Dict[str, str]] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     extra_body: Optional[Dict[str, str]] = None,
     **kwargs,
-) -> Batch:
+) -> FineTuningJob:
     """
-    Async: Retrieves a batch.
-
-    LiteLLM Equivalent of GET https://api.openai.com/v1/batches/{batch_id}
+    Async: Immediately cancel a fine-tune job.
     """
     try:
         loop = asyncio.get_event_loop()
-        kwargs["aretrieve_batch"] = True
+        kwargs["acancel_fine_tuning_job"] = True
 
         # Use a partial function to pass your keyword arguments
         func = partial(
-            retrieve_batch,
-            batch_id,
+            cancel_fine_tuning_job,
+            fine_tuning_job_id,
             custom_llm_provider,
-            metadata,
             extra_headers,
             extra_body,
             **kwargs,
@@ -217,24 +213,23 @@ async def aretrieve_batch(
             response = await init_response
         else:
             response = init_response  # type: ignore
-
         return response
     except Exception as e:
         raise e
 
 
-def retrieve_batch(
-    batch_id: str,
+def cancel_fine_tuning_job(
+    fine_tuning_job_id: str,
     custom_llm_provider: Literal["openai"] = "openai",
-    metadata: Optional[Dict[str, str]] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     extra_body: Optional[Dict[str, str]] = None,
     **kwargs,
-) -> Union[Batch, Coroutine[Any, Any, Batch]]:
+) -> Union[FineTuningJob, Coroutine[Any, Any, FineTuningJob]]:
     """
-    Retrieves a batch.
+    Immediately cancel a fine-tune job.
 
-    LiteLLM Equivalent of GET https://api.openai.com/v1/batches/{batch_id}
+    Response includes details of the enqueued job including job status and the name of the fine-tuned models once complete
+
     """
     try:
         optional_params = GenericLiteLLMParams(**kwargs)
@@ -278,22 +273,16 @@ def retrieve_batch(
             elif timeout is None:
                 timeout = 600.0
 
-            _retrieve_batch_request = RetrieveBatchRequest(
-                batch_id=batch_id,
-                extra_headers=extra_headers,
-                extra_body=extra_body,
-            )
+            _is_async = kwargs.pop("acancel_fine_tuning_job", False) is True
 
-            _is_async = kwargs.pop("aretrieve_batch", False) is True
-
-            response = openai_batches_instance.retrieve_batch(
-                _is_async=_is_async,
-                retrieve_batch_data=_retrieve_batch_request,
+            response = openai_fine_tuning_instance.cancel_fine_tuning_job(
                 api_base=api_base,
                 api_key=api_key,
                 organization=organization,
+                fine_tuning_job_id=fine_tuning_job_id,
                 timeout=timeout,
                 max_retries=optional_params.max_retries,
+                _is_async=_is_async,
             )
         else:
             raise litellm.exceptions.BadRequestError(
@@ -313,25 +302,24 @@ def retrieve_batch(
         raise e
 
 
-async def alist_batches(
+async def alist_fine_tuning_jobs(
     after: Optional[str] = None,
     limit: Optional[int] = None,
     custom_llm_provider: Literal["openai"] = "openai",
-    metadata: Optional[Dict[str, str]] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     extra_body: Optional[Dict[str, str]] = None,
     **kwargs,
-) -> Batch:
+) -> FineTuningJob:
     """
-    Async: List your organization's batches.
+    Async: List your organization's fine-tuning jobs
     """
     try:
         loop = asyncio.get_event_loop()
-        kwargs["alist_batches"] = True
+        kwargs["alist_fine_tuning_jobs"] = True
 
         # Use a partial function to pass your keyword arguments
         func = partial(
-            list_batches,
+            list_fine_tuning_jobs,
             after,
             limit,
             custom_llm_provider,
@@ -348,13 +336,12 @@ async def alist_batches(
             response = await init_response
         else:
             response = init_response  # type: ignore
-
         return response
     except Exception as e:
         raise e
 
 
-def list_batches(
+def list_fine_tuning_jobs(
     after: Optional[str] = None,
     limit: Optional[int] = None,
     custom_llm_provider: Literal["openai"] = "openai",
@@ -363,13 +350,17 @@ def list_batches(
     **kwargs,
 ):
     """
-    Lists batches
+    List your organization's fine-tuning jobs
 
-    List your organization's batches.
+    Params:
+
+    - after: Optional[str] = None, Identifier for the last job from the previous pagination request.
+    - limit: Optional[int] = None, Number of fine-tuning jobs to retrieve. Defaults to 20
     """
     try:
         optional_params = GenericLiteLLMParams(**kwargs)
         if custom_llm_provider == "openai":
+
             # for deepinfra/perplexity/anyscale/groq we check in get_llm_provider and pass in the api base from there
             api_base = (
                 optional_params.api_base
@@ -408,17 +399,17 @@ def list_batches(
             elif timeout is None:
                 timeout = 600.0
 
-            _is_async = kwargs.pop("alist_batches", False) is True
+            _is_async = kwargs.pop("alist_fine_tuning_jobs", False) is True
 
-            response = openai_batches_instance.list_batches(
-                _is_async=_is_async,
-                after=after,
-                limit=limit,
+            response = openai_fine_tuning_instance.list_fine_tuning_jobs(
                 api_base=api_base,
                 api_key=api_key,
                 organization=organization,
+                after=after,
+                limit=limit,
                 timeout=timeout,
                 max_retries=optional_params.max_retries,
+                _is_async=_is_async,
             )
         else:
             raise litellm.exceptions.BadRequestError(
@@ -436,12 +427,3 @@ def list_batches(
         return response
     except Exception as e:
         raise e
-    pass
-
-
-def cancel_batch():
-    pass
-
-
-async def acancel_batch():
-    pass

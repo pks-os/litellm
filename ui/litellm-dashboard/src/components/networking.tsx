@@ -5,6 +5,9 @@ import { message } from "antd";
 
 const isLocal = process.env.NODE_ENV === "development";
 const proxyBaseUrl = isLocal ? "http://localhost:4000" : null;
+if (isLocal != true) {
+  console.log = function() {};
+}
 
 export interface Model {
   model_name: string;
@@ -38,10 +41,10 @@ const handleError = async (errorData: string) => {
 
 
 // Global variable for the header name
-let globalLitellmHeaderName: string | null = null;
+let globalLitellmHeaderName: string  = "Authorization";
 
 // Function to set the global header name
-export function setGlobalLitellmHeaderName(headerName: string | null) {
+export function setGlobalLitellmHeaderName(headerName: string = "Authorization") {
   console.log(`setGlobalLitellmHeaderName: ${headerName}`);
   globalLitellmHeaderName = headerName;
 }
@@ -1395,22 +1398,15 @@ export const adminTopEndUsersCall = async (
     //message.info("Making top end users request");
 
     // Define requestOptions with body as an optional property
-    const requestOptions: {
-      method: string;
-      headers: {
-        [globalLitellmHeaderName]: string;
-        "Content-Type": string;
-      };
-      body?: string; // The body is optional and might not be present
-    } = {
+    const requestOptions = {
       method: "POST",
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
+      body: body,
     };
 
-    requestOptions.body = body;
 
     const response = await fetch(url, requestOptions);
     if (!response.ok) {
@@ -1448,12 +1444,7 @@ export const adminspendByProvider = async (
       url += `&api_key=${keyToken}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        [globalLitellmHeaderName]: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
@@ -1491,12 +1482,7 @@ export const adminGlobalActivity = async (
       url += `?start_date=${startTime}&end_date=${endTime}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        [globalLitellmHeaderName]: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
@@ -1532,12 +1518,7 @@ export const adminGlobalCacheActivity = async (
       url += `?start_date=${startTime}&end_date=${endTime}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        [globalLitellmHeaderName]: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
@@ -1573,12 +1554,7 @@ export const adminGlobalActivityPerModel = async (
       url += `?start_date=${startTime}&end_date=${endTime}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        [globalLitellmHeaderName]: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
@@ -1619,12 +1595,7 @@ export const adminGlobalActivityExceptions = async (
       url += `&model_group=${modelGroup}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        [globalLitellmHeaderName]: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
@@ -1665,12 +1636,7 @@ export const adminGlobalActivityExceptionsPerDeployment = async (
       url += `&model_group=${modelGroup}`;
     }
 
-    const requestOptions: {
-      method: string;
-      headers: {
-        [globalLitellmHeaderName]: string;
-      };
-    } = {
+    const requestOptions = {
       method: "GET",
       headers: {
         [globalLitellmHeaderName]: `Bearer ${accessToken}`,
