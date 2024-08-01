@@ -110,7 +110,7 @@ const sidebars = {
     },
     {
       type: "category",
-      label: "Embedding(), Image Generation(), Assistants(), Moderation(), Audio Transcriptions(), TTS(), Batches()",
+      label: "Embedding(), Image Generation(), Assistants(), Moderation(), Audio Transcriptions(), TTS(), Batches(), Fine-Tuning()",
       items: [
         "embedding/supported_embedding",
         "embedding/async_embedding",
@@ -120,6 +120,7 @@ const sidebars = {
         "text_to_speech",
         "assistants",
         "batches",
+        "fine_tuning",
         "anthropic_completion"
       ],
     },
