@@ -210,9 +210,9 @@ class LiteLLMRoutes(enum.Enum):
         "/files/{file_id}/content",
         # fine_tuning
         "/fine_tuning/jobs",
-        "v1/fine_tuning/jobs",
-        "/fine_tuning/jobs/{fine_tuning_job_id}/cancel"
-        "/v1/fine_tuning/jobs/{fine_tuning_job_id}/cancel"
+        "/v1/fine_tuning/jobs",
+        "/fine_tuning/jobs/{fine_tuning_job_id}/cancel",
+        "/v1/fine_tuning/jobs/{fine_tuning_job_id}/cancel",
         # assistants-related routes
         "/assistants",
         "/v1/assistants",
@@ -1560,6 +1560,22 @@ class AllCallbacks(LiteLLMBase):
         litellm_callback_name="datadog",
         litellm_callback_params=["DD_API_KEY", "DD_SITE"],
         ui_callback_name="Datadog",
+    )
+
+    braintrust: CallbackOnUI = CallbackOnUI(
+        litellm_callback_name="braintrust",
+        litellm_callback_params=["BRAINTRUST_API_KEY"],
+        ui_callback_name="Braintrust",
+    )
+
+    langsmith: CallbackOnUI = CallbackOnUI(
+        litellm_callback_name="langsmith",
+        litellm_callback_params=[
+            "LANGSMITH_API_KEY",
+            "LANGSMITH_PROJECT",
+            "LANGSMITH_DEFAULT_RUN_NAME",
+        ],
+        ui_callback_name="Langsmith",
     )
 
 

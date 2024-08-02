@@ -23,6 +23,9 @@ Features:
     - ✅ [Use LiteLLM keys/authentication on Pass Through Endpoints](pass_through#✨-enterprise---use-litellm-keysauthentication-on-pass-through-endpoints)
     - ✅ [Set Max Request Size / File Size on Requests](#set-max-request--response-size-on-litellm-proxy)
     - ✅ [Enforce Required Params for LLM Requests (ex. Reject requests missing ["metadata"]["generation_name"])](#enforce-required-params-for-llm-requests)
+- **Customize Logging, Guardrails, Caching per project**
+    - ✅ [Team Based Logging](./team_logging.md) - Allow each team to use their own Langfuse Project / custom callbacks
+    - ✅ [Disable Logging for a Team](./team_logging.md#disable-logging-for-a-team) - Switch off all logging for a team/project (GDPR Compliance)
 - **Enterprise Spend Tracking Features**
     - ✅ [Tracking Spend for Custom Tags](#tracking-spend-for-custom-tags)
     - ✅ [`/spend/report` API endpoint](cost_tracking.md#✨-enterprise-api-endpoints-to-get-spend)
