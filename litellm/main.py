@@ -986,6 +986,7 @@ def completion(
             output_cost_per_second=output_cost_per_second,
             output_cost_per_token=output_cost_per_token,
             cooldown_time=cooldown_time,
+            text_completion=kwargs.get("text_completion"),
         )
         logging.update_environment_variables(
             model=model,
@@ -2085,7 +2086,7 @@ def completion(
                     model_response=model_response,
                     print_verbose=print_verbose,
                     optional_params=new_params,
-                    litellm_params=litellm_params,
+                    litellm_params=litellm_params,  # type: ignore
                     logger_fn=logger_fn,
                     encoding=encoding,
                     vertex_location=vertex_ai_location,
@@ -5195,17 +5196,24 @@ def stream_chunk_builder(
     prompt_tokens = 0
     completion_tokens = 0
     for chunk in chunks:
+        usage_chunk: Optional[Usage] = None
         if "usage" in chunk:
-            if "prompt_tokens" in chunk["usage"]:
-                prompt_tokens = chunk["usage"].get("prompt_tokens", 0) or 0
-            if "completion_tokens" in chunk["usage"]:
-                completion_tokens = chunk["usage"].get("completion_tokens", 0) or 0
+            usage_chunk = chunk.usage
+        elif hasattr(chunk, "_hidden_params") and "usage" in chunk._hidden_params:
+            usage_chunk = chunk._hidden_params["usage"]
+        if usage_chunk is not None:
+            if "prompt_tokens" in usage_chunk:
+                prompt_tokens = usage_chunk.get("prompt_tokens", 0) or 0
+            if "completion_tokens" in usage_chunk:
+                completion_tokens = usage_chunk.get("completion_tokens", 0) or 0
     try:
         response["usage"]["prompt_tokens"] = prompt_tokens or token_counter(
             model=model, messages=messages
         )
-    except:  # don't allow this failing to block a complete streaming response from being returned
-        print_verbose(f"token_counter failed, assuming prompt tokens is 0")
+    except (
+        Exception
+    ):  # don't allow this failing to block a complete streaming response from being returned
+        print_verbose("token_counter failed, assuming prompt tokens is 0")
         response["usage"]["prompt_tokens"] = 0
     response["usage"]["completion_tokens"] = completion_tokens or token_counter(
         model=model,

@@ -255,7 +255,7 @@ def predibase_mock_post(url, data=None, json=None, headers=None, timeout=None):
     return mock_response
 
 
-# @pytest.mark.skip(reason="local only test")
+# @pytest.mark.skip(reason="local-only test")
 @pytest.mark.asyncio
 async def test_completion_predibase():
     try:
@@ -304,6 +304,8 @@ def test_completion_claude():
         print(response.usage.completion_tokens)
         print(response["usage"]["completion_tokens"])
         # print("new cost tracking")
+    except litellm.RateLimitError as e:
+        pass
     except Exception as e:
         if "overloaded_error" in str(e):
             pass
@@ -2574,6 +2576,7 @@ def test_completion_hf_model_no_provider():
 # test_completion_hf_model_no_provider()
 
 
+@pytest.mark.skip(reason="anyscale stopped serving public api endpoints")
 def test_completion_anyscale_with_functions():
     function1 = [
         {
@@ -3594,9 +3597,10 @@ def test_completion_anthropic_hanging():
             assert msg["role"] != converted_messages[i + 1]["role"]
 
 
+@pytest.mark.skip(reason="anyscale stopped serving public api endpoints")
 def test_completion_anyscale_api():
     try:
-        # litellm.set_verbose=True
+        # litellm.set_verbose = True
         messages = [
             {"role": "system", "content": "You're a good bot"},
             {
@@ -3711,6 +3715,7 @@ def test_azure_cloudflare_api():
 # test_azure_cloudflare_api()
 
 
+@pytest.mark.skip(reason="anyscale stopped serving public api endpoints")
 def test_completion_anyscale_2():
     try:
         # litellm.set_verbose = True
@@ -3733,6 +3738,7 @@ def test_completion_anyscale_2():
         pytest.fail(f"Error occurred: {e}")
 
 
+@pytest.mark.skip(reason="anyscale stopped serving public api endpoints")
 def test_mistral_anyscale_stream():
     litellm.set_verbose = False
     response = completion(
