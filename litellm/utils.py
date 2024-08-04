@@ -2391,6 +2391,18 @@ def get_optional_params_image_gen(
     additional_drop_params = passed_params.pop("additional_drop_params", None)
     special_params = passed_params.pop("kwargs")
     for k, v in special_params.items():
+        if k.startswith("aws_") and (
+            custom_llm_provider != "bedrock" and custom_llm_provider != "sagemaker"
+        ):  # allow dynamically setting boto3 init logic
+            continue
+        elif k == "hf_model_name" and custom_llm_provider != "sagemaker":
+            continue
+        elif (
+            k.startswith("vertex_")
+            and custom_llm_provider != "vertex_ai"
+            and custom_llm_provider != "vertex_ai_beta"
+        ):  # allow dynamically setting vertex ai init logic
+            continue
         passed_params[k] = v
 
     default_params = {
@@ -4446,6 +4458,11 @@ def get_llm_provider(
                 return model, custom_llm_provider, dynamic_api_key, api_base
 
         if custom_llm_provider:
+            if (
+                model.split("/")[0] == custom_llm_provider
+            ):  # handle scenario where model="azure/*" and custom_llm_provider="azure"
+                model = model.replace("{}/".format(custom_llm_provider), "")
+
             return model, custom_llm_provider, dynamic_api_key, api_base
 
         if api_key and api_key.startswith("os.environ/"):
@@ -4508,6 +4525,10 @@ def get_llm_provider(
             elif custom_llm_provider == "azure_ai":
                 api_base = api_base or get_secret("AZURE_AI_API_BASE")  # type: ignore
                 dynamic_api_key = api_key or get_secret("AZURE_AI_API_KEY")
+            elif custom_llm_provider == "github":
+                api_base = api_base or get_secret("GITHUB_API_BASE") or "https://models.inference.ai.azure.com"  # type: ignore
+                dynamic_api_key = api_key or get_secret("GITHUB_API_KEY")
+
             elif custom_llm_provider == "mistral":
                 # mistral is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.mistral.ai
                 api_base = (
@@ -5827,9 +5848,10 @@ def convert_to_model_response_object(
                 model_response_object.usage.completion_tokens = response_object["usage"].get("completion_tokens", 0)  # type: ignore
                 model_response_object.usage.prompt_tokens = response_object["usage"].get("prompt_tokens", 0)  # type: ignore
                 model_response_object.usage.total_tokens = response_object["usage"].get("total_tokens", 0)  # type: ignore
-                model_response_object.usage.prompt_cache_hit_tokens = response_object["usage"].get("prompt_cache_hit_tokens", None)  # type: ignore
-                model_response_object.usage.prompt_cache_miss_tokens = response_object["usage"].get("prompt_cache_miss_tokens", None)  # type: ignore
-
+                special_keys = ["completion_tokens", "prompt_tokens", "total_tokens"]
+                for k, v in response_object["usage"].items():
+                    if k not in special_keys:
+                        setattr(model_response_object.usage, k, v)  # type: ignore
             if "created" in response_object:
                 model_response_object.created = response_object["created"] or int(
                     time.time()

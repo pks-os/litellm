@@ -304,7 +304,7 @@ class Message(OpenAIObject):
         content: Optional[str] = None,
         role: Literal["assistant"] = "assistant",
         function_call=None,
-        tool_calls=None,
+        tool_calls: Optional[list] = None,
         **params,
     ):
         init_values = {
@@ -322,7 +322,7 @@ class Message(OpenAIObject):
                     )
                     for tool_call in tool_calls
                 ]
-                if tool_calls is not None
+                if tool_calls is not None and len(tool_calls) > 0
                 else None
             ),
         }
@@ -445,8 +445,6 @@ class Choices(OpenAIObject):
 
 
 class Usage(OpenAIObject):
-    prompt_cache_hit_tokens: Optional[int] = Field(default=None)
-    prompt_cache_miss_tokens: Optional[int] = Field(default=None)
     prompt_tokens: Optional[int] = Field(default=None)
     completion_tokens: Optional[int] = Field(default=None)
     total_tokens: Optional[int] = Field(default=None)
@@ -456,16 +454,15 @@ class Usage(OpenAIObject):
         prompt_tokens: Optional[int] = None,
         completion_tokens: Optional[int] = None,
         total_tokens: Optional[int] = None,
-        prompt_cache_hit_tokens: Optional[int] = None,
-        prompt_cache_miss_tokens: Optional[int] = None,
+        **params,
     ):
         data = {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
-            "prompt_cache_hit_tokens": prompt_cache_hit_tokens,
-            "prompt_cache_miss_tokens": prompt_cache_miss_tokens,
+            **params,
         }
+
         super().__init__(**data)
 
     def __contains__(self, key):
@@ -953,16 +950,18 @@ class ImageObject(OpenAIObject):
             return self.dict()
 
 
-class ImageResponse(OpenAIObject):
-    created: Optional[int] = None
+from openai.types.images_response import ImagesResponse as OpenAIImageResponse
 
-    data: Optional[List[ImageObject]] = None
 
-    usage: Optional[dict] = None
-
+class ImageResponse(OpenAIImageResponse):
     _hidden_params: dict = {}
 
-    def __init__(self, created=None, data=None, response_ms=None):
+    def __init__(
+        self,
+        created: Optional[int] = None,
+        data: Optional[list] = None,
+        response_ms=None,
+    ):
         if response_ms:
             _response_ms = response_ms
         else:
@@ -970,14 +969,14 @@ class ImageResponse(OpenAIObject):
         if data:
             data = data
         else:
-            data = None
+            data = []
 
         if created:
             created = created
         else:
-            created = None
+            created = int(time.time())
 
-        super().__init__(data=data, created=created)
+        super().__init__(created=created, data=data)
         self.usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def __contains__(self, key):
