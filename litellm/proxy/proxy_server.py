@@ -213,6 +213,8 @@ from litellm.proxy.utils import (
     send_email,
     update_spend,
 )
+from litellm.proxy.vertex_ai_endpoints.vertex_endpoints import router as vertex_router
+from litellm.proxy.vertex_ai_endpoints.vertex_endpoints import set_default_vertex_config
 from litellm.router import (
     AssistantsTypedDict,
     Deployment,
@@ -1818,6 +1820,10 @@ class ProxyConfig:
         files_config = config.get("files_settings", None)
         set_files_config(config=files_config)
 
+        ## default config for vertex ai routes
+        default_vertex_config = config.get("default_vertex_config", None)
+        set_default_vertex_config(config=default_vertex_config)
+
         ## ROUTER SETTINGS (e.g. routing_strategy, ...)
         router_settings = config.get("router_settings", None)
         if router_settings and isinstance(router_settings, dict):
@@ -2396,7 +2402,9 @@ async def async_data_generator(
                 user_api_key_dict=user_api_key_dict, response=chunk
             )
 
-            chunk = chunk.model_dump_json(exclude_none=True, exclude_unset=True)
+            if isinstance(chunk, BaseModel):
+                chunk = chunk.model_dump_json(exclude_none=True, exclude_unset=True)
+
             try:
                 yield f"data: {chunk}\n\n"
             except Exception as e:
@@ -2405,6 +2413,59 @@ async def async_data_generator(
         # Streaming is done, yield the [DONE] chunk
         done_message = "[DONE]"
         yield f"data: {done_message}\n\n"
+    except Exception as e:
+        verbose_proxy_logger.error(
+            "litellm.proxy.proxy_server.async_data_generator(): Exception occured - {}\n{}".format(
+                str(e), traceback.format_exc()
+            )
+        )
+        await proxy_logging_obj.post_call_failure_hook(
+            user_api_key_dict=user_api_key_dict,
+            original_exception=e,
+            request_data=request_data,
+        )
+        verbose_proxy_logger.debug(
+            f"\033[1;31mAn error occurred: {e}\n\n Debug this by setting `--debug`, e.g. `litellm --model gpt-3.5-turbo --debug`"
+        )
+        router_model_names = llm_router.model_names if llm_router is not None else []
+
+        if isinstance(e, HTTPException):
+            raise e
+        else:
+            error_traceback = traceback.format_exc()
+            error_msg = f"{str(e)}\n\n{error_traceback}"
+
+        proxy_exception = ProxyException(
+            message=getattr(e, "message", error_msg),
+            type=getattr(e, "type", "None"),
+            param=getattr(e, "param", "None"),
+            code=getattr(e, "status_code", 500),
+        )
+        error_returned = json.dumps({"error": proxy_exception.to_dict()})
+        yield f"data: {error_returned}\n\n"
+
+
+async def async_data_generator_anthropic(
+    response, user_api_key_dict: UserAPIKeyAuth, request_data: dict
+):
+    verbose_proxy_logger.debug("inside generator")
+    try:
+        start_time = time.time()
+        async for chunk in response:
+            verbose_proxy_logger.debug(
+                "async_data_generator: received streaming chunk - {}".format(chunk)
+            )
+            ### CALL HOOKS ### - modify outgoing data
+            chunk = await proxy_logging_obj.async_post_call_streaming_hook(
+                user_api_key_dict=user_api_key_dict, response=chunk
+            )
+
+            event_type = chunk.get("type")
+
+            try:
+                yield f"event: {event_type}\ndata:{json.dumps(chunk)}\n\n"
+            except Exception as e:
+                yield f"event: {event_type}\ndata:{str(e)}\n\n"
     except Exception as e:
         verbose_proxy_logger.error(
             "litellm.proxy.proxy_server.async_data_generator(): Exception occured - {}\n{}".format(
@@ -5379,6 +5440,19 @@ async def anthropic_response(
             )
         )
 
+        if (
+            "stream" in data and data["stream"] is True
+        ):  # use generate_responses to stream responses
+            selected_data_generator = async_data_generator_anthropic(
+                response=response,
+                user_api_key_dict=user_api_key_dict,
+                request_data=data,
+            )
+            return StreamingResponse(
+                selected_data_generator,
+                media_type="text/event-stream",
+            )
+
         verbose_proxy_logger.info("\nResponse from Litellm:\n{}".format(response))
         return response
     except RejectedRequestError as e:
@@ -5425,11 +5499,10 @@ async def anthropic_response(
             user_api_key_dict=user_api_key_dict, original_exception=e, request_data=data
         )
         verbose_proxy_logger.error(
-            "litellm.proxy.proxy_server.completion(): Exception occured - {}".format(
-                str(e)
+            "litellm.proxy.proxy_server.anthropic_response(): Exception occured - {}\n{}".format(
+                str(e), traceback.format_exc()
             )
         )
-        verbose_proxy_logger.debug(traceback.format_exc())
         error_msg = f"{str(e)}"
         raise ProxyException(
             message=getattr(e, "message", error_msg),
@@ -9631,6 +9704,7 @@ def cleanup_router_config_variables():
 
 app.include_router(router)
 app.include_router(fine_tuning_router)
+app.include_router(vertex_router)
 app.include_router(health_router)
 app.include_router(key_management_router)
 app.include_router(internal_user_router)

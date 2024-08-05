@@ -125,7 +125,7 @@ from .llms.vertex_ai_partner import VertexAIPartnerModels
 from .llms.vertex_httpx import VertexLLM
 from .llms.watsonx import IBMWatsonXAI
 from .types.llms.openai import HttpxBinaryResponseContent
-from .types.utils import ChatCompletionMessageToolCall
+from .types.utils import AdapterCompletionStreamWrapper, ChatCompletionMessageToolCall
 
 encoding = tiktoken.get_encoding("cl100k_base")
 from litellm.utils import (
@@ -515,7 +515,7 @@ def mock_completion(
         model_response = ModelResponse(stream=stream)
         if stream is True:
             # don't try to access stream object,
-            if kwargs.get("acompletion", False) == True:
+            if kwargs.get("acompletion", False) is True:
                 return CustomStreamWrapper(
                     completion_stream=async_mock_completion_streaming_obj(
                         model_response, mock_response=mock_response, model=model, n=n
@@ -524,13 +524,14 @@ def mock_completion(
                     custom_llm_provider="openai",
                     logging_obj=logging,
                 )
-            response = mock_completion_streaming_obj(
-                model_response,
-                mock_response=mock_response,
+            return CustomStreamWrapper(
+                completion_stream=mock_completion_streaming_obj(
+                    model_response, mock_response=mock_response, model=model, n=n
+                ),
                 model=model,
-                n=n,
+                custom_llm_provider="openai",
+                logging_obj=logging,
             )
-            return response
         if n is None:
             model_response.choices[0].message.content = mock_response  # type: ignore
         else:
@@ -4037,7 +4038,9 @@ def text_completion(
 ###### Adapter Completion ################
 
 
-async def aadapter_completion(*, adapter_id: str, **kwargs) -> Optional[BaseModel]:
+async def aadapter_completion(
+    *, adapter_id: str, **kwargs
+) -> Optional[Union[BaseModel, AdapterCompletionStreamWrapper]]:
     """
     Implemented to handle async calls for adapter_completion()
     """
@@ -4056,18 +4059,29 @@ async def aadapter_completion(*, adapter_id: str, **kwargs) -> Optional[BaseMode
 
         new_kwargs = translation_obj.translate_completion_input_params(kwargs=kwargs)
 
-        response: ModelResponse = await acompletion(**new_kwargs)  # type: ignore
-
-        translated_response = translation_obj.translate_completion_output_params(
-            response=response
-        )
+        response: Union[ModelResponse, CustomStreamWrapper] = await acompletion(**new_kwargs)  # type: ignore
+        translated_response: Optional[
+            Union[BaseModel, AdapterCompletionStreamWrapper]
+        ] = None
+        if isinstance(response, ModelResponse):
+            translated_response = translation_obj.translate_completion_output_params(
+                response=response
+            )
+        if isinstance(response, CustomStreamWrapper):
+            translated_response = (
+                translation_obj.translate_completion_output_params_streaming(
+                    completion_stream=response
+                )
+            )
 
         return translated_response
     except Exception as e:
         raise e
 
 
-def adapter_completion(*, adapter_id: str, **kwargs) -> Optional[BaseModel]:
+def adapter_completion(
+    *, adapter_id: str, **kwargs
+) -> Optional[Union[BaseModel, AdapterCompletionStreamWrapper]]:
     translation_obj: Optional[CustomLogger] = None
     for item in litellm.adapters:
         if item["id"] == adapter_id:
@@ -4082,11 +4096,20 @@ def adapter_completion(*, adapter_id: str, **kwargs) -> Optional[BaseModel]:
 
     new_kwargs = translation_obj.translate_completion_input_params(kwargs=kwargs)
 
-    response: ModelResponse = completion(**new_kwargs)  # type: ignore
-
-    translated_response = translation_obj.translate_completion_output_params(
-        response=response
+    response: Union[ModelResponse, CustomStreamWrapper] = completion(**new_kwargs)  # type: ignore
+    translated_response: Optional[Union[BaseModel, AdapterCompletionStreamWrapper]] = (
+        None
     )
+    if isinstance(response, ModelResponse):
+        translated_response = translation_obj.translate_completion_output_params(
+            response=response
+        )
+    elif isinstance(response, CustomStreamWrapper) or inspect.isgenerator(response):
+        translated_response = (
+            translation_obj.translate_completion_output_params_streaming(
+                completion_stream=response
+            )
+        )
 
     return translated_response
 
@@ -5078,23 +5101,27 @@ def stream_chunk_builder(
     combined_content = ""
     combined_arguments = ""
 
-    if (
-        "tool_calls" in chunks[0]["choices"][0]["delta"]
-        and chunks[0]["choices"][0]["delta"]["tool_calls"] is not None
-    ):
+    tool_call_chunks = [
+        chunk
+        for chunk in chunks
+        if "tool_calls" in chunk["choices"][0]["delta"]
+        and chunk["choices"][0]["delta"]["tool_calls"] is not None
+    ]
+
+    if len(tool_call_chunks) > 0:
         argument_list = []
-        delta = chunks[0]["choices"][0]["delta"]
+        delta = tool_call_chunks[0]["choices"][0]["delta"]
         message = response["choices"][0]["message"]
         message["tool_calls"] = []
         id = None
         name = None
         type = None
         tool_calls_list = []
-        prev_index = 0
+        prev_index = None
         prev_id = None
         curr_id = None
         curr_index = 0
-        for chunk in chunks:
+        for chunk in tool_call_chunks:
             choices = chunk["choices"]
             for choice in choices:
                 delta = choice.get("delta", {})
@@ -5116,6 +5143,8 @@ def stream_chunk_builder(
                         name = tool_calls[0].function.name
                     if tool_calls[0].type:
                         type = tool_calls[0].type
+            if prev_index is None:
+                prev_index = curr_index
             if curr_index != prev_index:  # new tool call
                 combined_arguments = "".join(argument_list)
                 tool_calls_list.append(
@@ -5134,18 +5163,24 @@ def stream_chunk_builder(
         tool_calls_list.append(
             {
                 "id": id,
+                "index": curr_index,
                 "function": {"arguments": combined_arguments, "name": name},
                 "type": type,
             }
         )
         response["choices"][0]["message"]["content"] = None
         response["choices"][0]["message"]["tool_calls"] = tool_calls_list
-    elif (
-        "function_call" in chunks[0]["choices"][0]["delta"]
-        and chunks[0]["choices"][0]["delta"]["function_call"] is not None
-    ):
+
+    function_call_chunks = [
+        chunk
+        for chunk in chunks
+        if "function_call" in chunk["choices"][0]["delta"]
+        and chunk["choices"][0]["delta"]["function_call"] is not None
+    ]
+
+    if len(function_call_chunks) > 0:
         argument_list = []
-        delta = chunks[0]["choices"][0]["delta"]
+        delta = function_call_chunks[0]["choices"][0]["delta"]
         function_call = delta.get("function_call", "")
         function_call_name = function_call.name
 
@@ -5153,7 +5188,7 @@ def stream_chunk_builder(
         message["function_call"] = {}
         message["function_call"]["name"] = function_call_name
 
-        for chunk in chunks:
+        for chunk in function_call_chunks:
             choices = chunk["choices"]
             for choice in choices:
                 delta = choice.get("delta", {})
@@ -5170,7 +5205,15 @@ def stream_chunk_builder(
         response["choices"][0]["message"]["function_call"][
             "arguments"
         ] = combined_arguments
-    else:
+    
+    content_chunks = [
+        chunk
+        for chunk in chunks
+        if "content" in chunk["choices"][0]["delta"]
+        and chunk["choices"][0]["delta"]["content"] is not None
+    ]
+
+    if len(content_chunks) > 0:
         for chunk in chunks:
             choices = chunk["choices"]
             for choice in choices:
@@ -5186,12 +5229,12 @@ def stream_chunk_builder(
         # Update the "content" field within the response dictionary
         response["choices"][0]["message"]["content"] = combined_content
 
+    completion_output = ""
     if len(combined_content) > 0:
-        completion_output = combined_content
-    elif len(combined_arguments) > 0:
-        completion_output = combined_arguments
-    else:
-        completion_output = ""
+        completion_output += combined_content
+    if len(combined_arguments) > 0:
+        completion_output += combined_arguments
+
     # # Update usage information if needed
     prompt_tokens = 0
     completion_tokens = 0
