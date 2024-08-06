@@ -146,6 +146,9 @@ return_response_headers: bool = (
 )
 ##################
 logging: bool = True
+enable_caching_on_provider_specific_optional_params: bool = (
+    False  # feature-flag for caching on optional params - e.g. 'top_k'
+)
 caching: bool = (
     False  # Not used anymore, will be removed in next MAJOR release - https://github.com/BerriAI/litellm/discussions/648
 )
@@ -817,8 +820,18 @@ from .utils import (
     ModelResponse,
     EmbeddingResponse,
     ImageResponse,
+    TranscriptionResponse,
+    TextCompletionResponse,
     get_provider_fields,
 )
+
+ALL_LITELLM_RESPONSE_TYPES = [
+    ModelResponse,
+    EmbeddingResponse,
+    ImageResponse,
+    TranscriptionResponse,
+    TextCompletionResponse,
+]
 
 from .types.utils import ImageObject
 from .llms.custom_llm import CustomLLM
