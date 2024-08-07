@@ -128,6 +128,11 @@ def log_to_opentelemetry(func):
                     duration=0.0,
                     start_time=start_time,
                     end_time=end_time,
+                    event_metadata={
+                        "function_name": func.__name__,
+                        "function_kwargs": kwargs,
+                        "function_args": args,
+                    },
                 )
             elif (
                 # in litellm custom callbacks kwargs is passed as arg[0]
@@ -167,9 +172,15 @@ def log_to_opentelemetry(func):
                     error=e,
                     service=ServiceTypes.DB,
                     call_type=func.__name__,
+                    parent_otel_span=kwargs["parent_otel_span"],
                     duration=0.0,
                     start_time=start_time,
                     end_time=end_time,
+                    event_metadata={
+                        "function_name": func.__name__,
+                        "function_kwargs": kwargs,
+                        "function_args": args,
+                    },
                 )
             raise e
 
@@ -804,7 +815,7 @@ class PrismaClient:
     spend_log_transactions: List = []
 
     def __init__(self, database_url: str, proxy_logging_obj: ProxyLogging):
-        print_verbose(
+        verbose_proxy_logger.debug(
             "LiteLLM: DATABASE_URL Set in config, trying to 'pip install prisma'"
         )
         ## init logging object
@@ -833,8 +844,9 @@ class PrismaClient:
                 os.chdir(original_dir)
             # Now you can import the Prisma Client
             from prisma import Prisma  # type: ignore
-
+        verbose_proxy_logger.debug("Connecting Prisma Client to DB..")
         self.db = Prisma()  # Client to connect to Prisma db
+        verbose_proxy_logger.debug("Success - Connected Prisma Client to DB")
 
     def hash_token(self, token: str):
         # Hash the string using SHA-256
@@ -1389,6 +1401,7 @@ class PrismaClient:
                     WHERE v.token = '{token}'
                     """
 
+                    print_verbose("sql_query being made={}".format(sql_query))
                     response = await self.db.query_first(query=sql_query)
 
                     if response is not None:

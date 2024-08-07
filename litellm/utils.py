@@ -13,6 +13,7 @@ import base64
 import binascii
 import copy
 import datetime
+import hashlib
 import inspect
 import itertools
 import json
@@ -554,6 +555,15 @@ def function_setup(
         ):
             _file_name: BinaryIO = args[1] if len(args) > 1 else kwargs["file"]
             file_name = getattr(_file_name, "name", "audio_file")
+            file_descriptor = _file_name.fileno()
+            file_stat = os.fstat(file_descriptor)
+            file_size = str(file_stat.st_size)
+
+            file_checksum = _file_name.name + file_size
+            if "metadata" in kwargs:
+                kwargs["metadata"]["file_checksum"] = file_checksum
+            else:
+                kwargs["metadata"] = {"file_checksum": file_checksum}
             messages = file_name
         elif (
             call_type == CallTypes.aspeech.value or call_type == CallTypes.speech.value
@@ -4478,44 +4488,72 @@ def get_llm_provider(
             model = model.split("/", 1)[1]
             if custom_llm_provider == "perplexity":
                 # perplexity is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.perplexity.ai
-                api_base = api_base or "https://api.perplexity.ai"
+                api_base = api_base or get_secret("PERPLEXITY_API_BASE") or "https://api.perplexity.ai"  # type: ignore
                 dynamic_api_key = api_key or get_secret("PERPLEXITYAI_API_KEY")
             elif custom_llm_provider == "anyscale":
                 # anyscale is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.endpoints.anyscale.com/v1
-                api_base = api_base or "https://api.endpoints.anyscale.com/v1"
+                api_base = api_base or get_secret("ANYSCALE_API_BASE") or "https://api.endpoints.anyscale.com/v1"  # type: ignore
                 dynamic_api_key = api_key or get_secret("ANYSCALE_API_KEY")
             elif custom_llm_provider == "deepinfra":
                 # deepinfra is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.endpoints.anyscale.com/v1
-                api_base = api_base or "https://api.deepinfra.com/v1/openai"
+                api_base = api_base or get_secret("DEEPINFRA_API_BASE") or "https://api.deepinfra.com/v1/openai"  # type: ignore
                 dynamic_api_key = api_key or get_secret("DEEPINFRA_API_KEY")
             elif custom_llm_provider == "empower":
-                api_base = api_base or "https://app.empower.dev/api/v1"
+                api_base = (
+                    api_base
+                    or get_secret("EMPOWER_API_BASE")
+                    or "https://app.empower.dev/api/v1"
+                )  # type: ignore
                 dynamic_api_key = api_key or get_secret("EMPOWER_API_KEY")
             elif custom_llm_provider == "groq":
                 # groq is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.groq.com/openai/v1
-                api_base = api_base or "https://api.groq.com/openai/v1"
+                api_base = (
+                    api_base
+                    or get_secret("GROQ_API_BASE")
+                    or "https://api.groq.com/openai/v1"
+                )  # type: ignore
                 dynamic_api_key = api_key or get_secret("GROQ_API_KEY")
             elif custom_llm_provider == "nvidia_nim":
                 # nvidia_nim is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.endpoints.anyscale.com/v1
-                api_base = api_base or "https://integrate.api.nvidia.com/v1"
+                api_base = (
+                    api_base
+                    or get_secret("NVIDIA_NIM_API_BASE")
+                    or "https://integrate.api.nvidia.com/v1"
+                )  # type: ignore
                 dynamic_api_key = api_key or get_secret("NVIDIA_NIM_API_KEY")
             elif custom_llm_provider == "volcengine":
                 # volcengine is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.endpoints.anyscale.com/v1
-                api_base = api_base or "https://ark.cn-beijing.volces.com/api/v3"
+                api_base = (
+                    api_base
+                    or get_secret("VOLCENGINE_API_BASE")
+                    or "https://ark.cn-beijing.volces.com/api/v3"
+                )  # type: ignore
                 dynamic_api_key = api_key or get_secret("VOLCENGINE_API_KEY")
             elif custom_llm_provider == "codestral":
                 # codestral is openai compatible, we just need to set this to custom_openai and have the api_base be https://codestral.mistral.ai/v1
-                api_base = api_base or "https://codestral.mistral.ai/v1"
+                api_base = (
+                    api_base
+                    or get_secret("CODESTRAL_API_BASE")
+                    or "https://codestral.mistral.ai/v1"
+                )  # type: ignore
                 dynamic_api_key = api_key or get_secret("CODESTRAL_API_KEY")
             elif custom_llm_provider == "deepseek":
                 # deepseek is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.deepseek.com/v1
-                api_base = api_base or "https://api.deepseek.com/v1"
+                api_base = (
+                    api_base
+                    or get_secret("DEEPSEEK_API_BASE")
+                    or "https://api.deepseek.com/v1"
+                )  # type: ignore
                 dynamic_api_key = api_key or get_secret("DEEPSEEK_API_KEY")
             elif custom_llm_provider == "fireworks_ai":
                 # fireworks is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.fireworks.ai/inference/v1
                 if not model.startswith("accounts/"):
                     model = f"accounts/fireworks/models/{model}"
-                api_base = api_base or "https://api.fireworks.ai/inference/v1"
+                api_base = (
+                    api_base
+                    or get_secret("FIREWORKS_API_BASE")
+                    or "https://api.fireworks.ai/inference/v1"
+                )  # type: ignore
                 dynamic_api_key = api_key or (
                     get_secret("FIREWORKS_API_KEY")
                     or get_secret("FIREWORKS_AI_API_KEY")
@@ -4549,10 +4587,18 @@ def get_llm_provider(
                 )
             elif custom_llm_provider == "voyage":
                 # voyage is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.voyageai.com/v1
-                api_base = "https://api.voyageai.com/v1"
+                api_base = (
+                    api_base
+                    or get_secret("VOYAGE_API_BASE")
+                    or "https://api.voyageai.com/v1"
+                )  # type: ignore
                 dynamic_api_key = api_key or get_secret("VOYAGE_API_KEY")
             elif custom_llm_provider == "together_ai":
-                api_base = "https://api.together.xyz/v1"
+                api_base = (
+                    api_base
+                    or get_secret("TOGETHER_AI_API_BASE")
+                    or "https://api.together.xyz/v1"
+                )  # type: ignore
                 dynamic_api_key = api_key or (
                     get_secret("TOGETHER_API_KEY")
                     or get_secret("TOGETHER_AI_API_KEY")
@@ -4564,7 +4610,7 @@ def get_llm_provider(
                     api_base
                     or get_secret("FRIENDLI_API_BASE")
                     or "https://inference.friendli.ai/v1"
-                )
+                )  # type: ignore
                 dynamic_api_key = (
                     api_key
                     or get_secret("FRIENDLIAI_API_KEY")

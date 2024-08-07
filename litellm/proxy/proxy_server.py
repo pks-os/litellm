@@ -141,6 +141,7 @@ from litellm.proxy.common_utils.admin_ui_utils import (
     setup_admin_ui_on_server_root_path,
     show_missing_vars_in_env,
 )
+from litellm.proxy.common_utils.debug_utils import init_verbose_loggers
 from litellm.proxy.common_utils.debug_utils import router as debugging_endpoints_router
 from litellm.proxy.common_utils.encrypt_decrypt_utils import (
     decrypt_value_helper,
@@ -283,8 +284,9 @@ except Exception as e:
         pass
 
 server_root_path = os.getenv("SERVER_ROOT_PATH", "")
+print("server root path: ", server_root_path)  # noqa
 if server_root_path != "":
-    setup_admin_ui_on_server_root_path()
+    setup_admin_ui_on_server_root_path(server_root_path)
 _license_check = LicenseCheck()
 premium_user: bool = _license_check.is_premium()
 ui_link = f"{server_root_path}/ui/"
@@ -2102,13 +2104,18 @@ class ProxyConfig:
                 for alert in _general_settings["alerting"]:
                     if alert not in general_settings["alerting"]:
                         general_settings["alerting"].append(alert)
-
                 proxy_logging_obj.alerting = general_settings["alerting"]
                 proxy_logging_obj.slack_alerting_instance.alerting = general_settings[
                     "alerting"
                 ]
             elif general_settings is None:
                 general_settings = {}
+                general_settings["alerting"] = _general_settings["alerting"]
+                proxy_logging_obj.alerting = general_settings["alerting"]
+                proxy_logging_obj.slack_alerting_instance.alerting = general_settings[
+                    "alerting"
+                ]
+            elif isinstance(general_settings, dict):
                 general_settings["alerting"] = _general_settings["alerting"]
                 proxy_logging_obj.alerting = general_settings["alerting"]
                 proxy_logging_obj.slack_alerting_instance.alerting = general_settings[
@@ -2546,6 +2553,8 @@ def giveup(e):
 async def startup_event():
     global prisma_client, master_key, use_background_health_checks, llm_router, llm_model_list, general_settings, proxy_budget_rescheduler_min_time, proxy_budget_rescheduler_max_time, litellm_proxy_admin_name, db_writer_client, store_model_in_db, premium_user, _license_check
     import json
+
+    init_verbose_loggers()
 
     ### LOAD MASTER KEY ###
     # check if master key set in environment - load from there
@@ -8553,6 +8562,19 @@ async def auth_callback(request: Request):
     # User is Authe'd in - generate key for the UI to access Proxy
     user_email = getattr(result, "email", None)
     user_id = getattr(result, "id", None)
+
+    if user_email is not None and os.getenv("ALLOWED_EMAIL_DOMAINS") is not None:
+        email_domain = user_email.split("@")[1]
+        allowed_domains = os.getenv("ALLOWED_EMAIL_DOMAINS").split(",")  # type: ignore
+        if email_domain not in allowed_domains:
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "message": "The email domain={}, is not an allowed email domain={}. Contact your admin to change this.".format(
+                        email_domain, allowed_domains
+                    )
+                },
+            )
 
     # generic client id
     if generic_client_id is not None:
