@@ -138,7 +138,6 @@ from litellm.proxy.auth.user_api_key_auth import user_api_key_auth
 from litellm.proxy.caching_routes import router as caching_router
 from litellm.proxy.common_utils.admin_ui_utils import (
     html_form,
-    setup_admin_ui_on_server_root_path,
     show_missing_vars_in_env,
 )
 from litellm.proxy.common_utils.debug_utils import init_verbose_loggers
@@ -285,8 +284,6 @@ except Exception as e:
 
 server_root_path = os.getenv("SERVER_ROOT_PATH", "")
 print("server root path: ", server_root_path)  # noqa
-if server_root_path != "":
-    setup_admin_ui_on_server_root_path(server_root_path)
 _license_check = LicenseCheck()
 premium_user: bool = _license_check.is_premium()
 ui_link = f"{server_root_path}/ui/"
@@ -388,6 +385,21 @@ try:
             src = os.path.join(ui_path, filename)
             dst = os.path.join(folder_path, "index.html")
             os.rename(src, dst)
+
+    if server_root_path != "":
+        print(  # noqa
+            f"server_root_path is set, forwarding any /ui requests to {server_root_path}/ui"
+        )  # noqa
+        if os.getenv("PROXY_BASE_URL") is None:
+            os.environ["PROXY_BASE_URL"] = server_root_path
+
+        @app.middleware("http")
+        async def redirect_ui_middleware(request: Request, call_next):
+            if request.url.path.startswith("/ui"):
+                new_path = request.url.path.replace("/ui", f"{server_root_path}/ui", 1)
+                return RedirectResponse(new_path)
+            return await call_next(request)
+
 except:
     pass
 app.add_middleware(
@@ -2995,7 +3007,10 @@ async def chat_completion(
         elif (
             llm_router is not None
             and data["model"] not in router_model_names
-            and llm_router.default_deployment is not None
+            and (
+                llm_router.default_deployment is not None
+                or len(llm_router.provider_default_deployments) > 0
+            )
         ):  # model in router deployments, calling a specific deployment on the router
             tasks.append(llm_router.acompletion(**data))
         elif user_model is not None:  # `litellm --model <your-model-name>`
@@ -3263,7 +3278,10 @@ async def completion(
         elif (
             llm_router is not None
             and data["model"] not in router_model_names
-            and llm_router.default_deployment is not None
+            and (
+                llm_router.default_deployment is not None
+                or len(llm_router.provider_default_deployments) > 0
+            )
         ):  # model in router deployments, calling a specific deployment on the router
             llm_response = asyncio.create_task(llm_router.atext_completion(**data))
         elif user_model is not None:  # `litellm --model <your-model-name>`
@@ -3529,7 +3547,10 @@ async def embeddings(
         elif (
             llm_router is not None
             and data["model"] not in router_model_names
-            and llm_router.default_deployment is not None
+            and (
+                llm_router.default_deployment is not None
+                or len(llm_router.provider_default_deployments) > 0
+            )
         ):  # model in router deployments, calling a specific deployment on the router
             tasks.append(llm_router.aembedding(**data))
         elif user_model is not None:  # `litellm --model <your-model-name>`
@@ -3696,7 +3717,10 @@ async def image_generation(
         elif (
             llm_router is not None
             and data["model"] not in router_model_names
-            and llm_router.default_deployment is not None
+            and (
+                llm_router.default_deployment is not None
+                or len(llm_router.provider_default_deployments) > 0
+            )
         ):  # model in router deployments, calling a specific deployment on the router
             response = await llm_router.aimage_generation(**data)
         elif user_model is not None:  # `litellm --model <your-model-name>`
@@ -3838,7 +3862,10 @@ async def audio_speech(
         elif (
             llm_router is not None
             and data["model"] not in router_model_names
-            and llm_router.default_deployment is not None
+            and (
+                llm_router.default_deployment is not None
+                or len(llm_router.provider_default_deployments) > 0
+            )
         ):  # model in router deployments, calling a specific deployment on the router
             response = await llm_router.aspeech(**data)
         elif user_model is not None:  # `litellm --model <your-model-name>`
@@ -4008,7 +4035,10 @@ async def audio_transcriptions(
             elif (
                 llm_router is not None
                 and data["model"] not in router_model_names
-                and llm_router.default_deployment is not None
+                and (
+                    llm_router.default_deployment is not None
+                    or len(llm_router.provider_default_deployments) > 0
+                )
             ):  # model in router deployments, calling a specific deployment on the router
                 response = await llm_router.atranscription(**data)
             elif user_model is not None:  # `litellm --model <your-model-name>`
@@ -5258,7 +5288,10 @@ async def moderations(
         elif (
             llm_router is not None
             and data.get("model") not in router_model_names
-            and llm_router.default_deployment is not None
+            and (
+                llm_router.default_deployment is not None
+                or len(llm_router.provider_default_deployments) > 0
+            )
         ):  # model in router deployments, calling a specific deployment on the router
             response = await llm_router.amoderation(**data)
         elif user_model is not None:  # `litellm --model <your-model-name>`
@@ -5409,7 +5442,10 @@ async def anthropic_response(
         elif (
             llm_router is not None
             and data["model"] not in router_model_names
-            and llm_router.default_deployment is not None
+            and (
+                llm_router.default_deployment is not None
+                or len(llm_router.provider_default_deployments) > 0
+            )
         ):  # model in router deployments, calling a specific deployment on the router
             llm_response = asyncio.create_task(llm_router.aadapter_completion(**data))
         elif user_model is not None:  # `litellm --model <your-model-name>`
