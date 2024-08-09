@@ -55,7 +55,10 @@ import litellm._service_logger  # for storing API inputs, outputs, and metadata
 import litellm.litellm_core_utils
 import litellm.litellm_core_utils.json_validation_rule
 from litellm.caching import DualCache
-from litellm.litellm_core_utils.core_helpers import map_finish_reason
+from litellm.litellm_core_utils.core_helpers import (
+    get_file_check_sum,
+    map_finish_reason,
+)
 from litellm.litellm_core_utils.exception_mapping_utils import get_error_message
 from litellm.litellm_core_utils.llm_request_utils import _ensure_extra_body_is_safe
 from litellm.litellm_core_utils.redact_messages import (
@@ -557,12 +560,8 @@ def function_setup(
             or call_type == CallTypes.transcription.value
         ):
             _file_name: BinaryIO = args[1] if len(args) > 1 else kwargs["file"]
-            file_name = getattr(_file_name, "name", "audio_file")
-            file_descriptor = _file_name.fileno()
-            file_stat = os.fstat(file_descriptor)
-            file_size = str(file_stat.st_size)
-
-            file_checksum = _file_name.name + file_size
+            file_checksum = get_file_check_sum(_file=_file_name)
+            file_name = _file_name.name
             if "metadata" in kwargs:
                 kwargs["metadata"]["file_checksum"] = file_checksum
             else:
@@ -3190,6 +3189,7 @@ def get_optional_params(
         optional_params = litellm.VertexAILlama3Config().map_openai_params(
             non_default_params=non_default_params,
             optional_params=optional_params,
+            model=model,
         )
     elif custom_llm_provider == "vertex_ai" and model in litellm.vertex_mistral_models:
         supported_params = get_supported_openai_params(
@@ -6787,7 +6787,10 @@ def exception_type(
                             llm_provider="anthropic",
                             model=model,
                         )
-                    elif original_exception.status_code == 500:
+                    elif (
+                        original_exception.status_code == 500
+                        or original_exception.status_code == 529
+                    ):
                         exception_mapping_worked = True
                         raise litellm.InternalServerError(
                             message=f"AnthropicException - {error_str}. Handle with `litellm.InternalServerError`.",

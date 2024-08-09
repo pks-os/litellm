@@ -223,6 +223,9 @@ class AnthropicConfig:
         for m in messages:
             user_message: Optional[ChatCompletionUserMessage] = None
             tool_message_list: List[ChatCompletionToolMessage] = []
+            new_user_content_list: List[
+                Union[ChatCompletionTextObject, ChatCompletionImageObject]
+            ] = []
             ## USER MESSAGE ##
             if m["role"] == "user":
                 ## translate user message
@@ -231,9 +234,6 @@ class AnthropicConfig:
                         role="user", content=m["content"]
                     )
                 elif isinstance(m["content"], list):
-                    new_user_content_list: List[
-                        Union[ChatCompletionTextObject, ChatCompletionImageObject]
-                    ] = []
                     for content in m["content"]:
                         if content["type"] == "text":
                             text_obj = ChatCompletionTextObject(
@@ -286,6 +286,9 @@ class AnthropicConfig:
 
             if user_message is not None:
                 new_messages.append(user_message)
+
+            if len(new_user_content_list) > 0:
+                new_messages.append({"role": "user", "content": new_user_content_list})
 
             if len(tool_message_list) > 0:
                 new_messages.extend(tool_message_list)
