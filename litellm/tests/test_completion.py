@@ -14,7 +14,7 @@ sys.path.insert(
 )  # Adds the parent directory to the system path
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -23,7 +23,7 @@ from litellm import RateLimitError, Timeout, completion, completion_cost, embedd
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.llms.prompt_templates.factory import anthropic_messages_pt
 
-# litellm.num_retries = 3
+# litellm.num_retries =3
 litellm.cache = None
 litellm.success_callback = []
 user_message = "Write a short poem about the sky"
@@ -3449,7 +3449,6 @@ def response_format_tests(response: litellm.ModelResponse):
     assert isinstance(response.usage.total_tokens, int)  # type: ignore
 
 
-@pytest.mark.parametrize("sync_mode", [True, False])
 @pytest.mark.parametrize(
     "model",
     [
@@ -3463,6 +3462,7 @@ def response_format_tests(response: litellm.ModelResponse):
         "cohere.command-text-v14",
     ],
 )
+@pytest.mark.parametrize("sync_mode", [True, False])
 @pytest.mark.asyncio
 async def test_completion_bedrock_httpx_models(sync_mode, model):
     litellm.set_verbose = True
@@ -3705,19 +3705,21 @@ def test_completion_anyscale_api():
 # test_completion_anyscale_api()
 
 
-@pytest.mark.skip(reason="flaky test, times out frequently")
+# @pytest.mark.skip(reason="flaky test, times out frequently")
 def test_completion_cohere():
     try:
         # litellm.set_verbose=True
         messages = [
             {"role": "system", "content": "You're a good bot"},
+            {"role": "assistant", "content": [{"text": "2", "type": "text"}]},
+            {"role": "assistant", "content": [{"text": "3", "type": "text"}]},
             {
                 "role": "user",
                 "content": "Hey",
             },
         ]
         response = completion(
-            model="command-nightly",
+            model="command-r",
             messages=messages,
         )
         print(response)
