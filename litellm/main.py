@@ -95,7 +95,6 @@ from .llms import (
     palm,
     petals,
     replicate,
-    sagemaker,
     together_ai,
     triton,
     vertex_ai,
@@ -120,6 +119,7 @@ from .llms.prompt_templates.factory import (
     prompt_factory,
     stringify_json_tool_call_content,
 )
+from .llms.sagemaker import SagemakerLLM
 from .llms.text_completion_codestral import CodestralTextCompletion
 from .llms.triton import TritonChatCompletion
 from .llms.vertex_ai_partner import VertexAIPartnerModels
@@ -166,6 +166,7 @@ bedrock_converse_chat_completion = BedrockConverseLLM()
 vertex_chat_completion = VertexLLM()
 vertex_partner_models_chat_completion = VertexAIPartnerModels()
 watsonxai = IBMWatsonXAI()
+sagemaker_llm = SagemakerLLM()
 ####### COMPLETION ENDPOINTS ################
 
 
@@ -2216,7 +2217,7 @@ def completion(
             response = model_response
         elif custom_llm_provider == "sagemaker":
             # boto3 reads keys from .env
-            model_response = sagemaker.completion(
+            model_response = sagemaker_llm.completion(
                 model=model,
                 messages=messages,
                 model_response=model_response,
@@ -2230,26 +2231,13 @@ def completion(
                 logging_obj=logging,
                 acompletion=acompletion,
             )
-            if (
-                "stream" in optional_params and optional_params["stream"] == True
-            ):  ## [BETA]
-                print_verbose(f"ENTERS SAGEMAKER CUSTOMSTREAMWRAPPER")
-                from .llms.sagemaker import TokenIterator
-
-                tokenIterator = TokenIterator(model_response, acompletion=acompletion)
-                response = CustomStreamWrapper(
-                    completion_stream=tokenIterator,
-                    model=model,
-                    custom_llm_provider="sagemaker",
-                    logging_obj=logging,
-                )
+            if optional_params.get("stream", False):
                 ## LOGGING
                 logging.post_call(
                     input=messages,
                     api_key=None,
-                    original_response=response,
+                    original_response=model_response,
                 )
-                return response
 
             ## RESPONSE OBJECT
             response = model_response
@@ -3529,7 +3517,7 @@ def embedding(
                 model_response=EmbeddingResponse(),
             )
         elif custom_llm_provider == "sagemaker":
-            response = sagemaker.embedding(
+            response = sagemaker_llm.embedding(
                 model=model,
                 input=input,
                 encoding=encoding,
@@ -4791,7 +4779,9 @@ async def ahealth_check(
     For azure/openai -> completion.with_raw_response
     For rest -> litellm.acompletion()
     """
+    passed_in_mode: Optional[str] = None
     try:
+
         model: Optional[str] = model_params.get("model", None)
 
         if model is None:
@@ -4805,7 +4795,10 @@ async def ahealth_check(
         if model in litellm.model_cost and mode is None:
             mode = litellm.model_cost[model].get("mode")
 
-        mode = mode or "chat"  # default to chat completion calls
+        mode = mode
+        passed_in_mode = mode
+        if mode is None:
+            mode = "chat"  # default to chat completion calls
 
         if custom_llm_provider == "azure":
             api_key = (
@@ -4895,13 +4888,14 @@ async def ahealth_check(
                 response = {}  # args like remaining ratelimit etc.
         return response
     except Exception as e:
-        verbose_logger.error(
+        verbose_logger.exception(
             "litellm.ahealth_check(): Exception occured - {}".format(str(e))
         )
         stack_trace = traceback.format_exc()
         if isinstance(stack_trace, str):
             stack_trace = stack_trace[:1000]
-        if model not in litellm.model_cost and mode is None:
+
+        if passed_in_mode is None:
             return {
                 "error": "Missing `mode`. Set the `mode` for the model - https://docs.litellm.ai/docs/proxy/health#embedding-models"
             }
