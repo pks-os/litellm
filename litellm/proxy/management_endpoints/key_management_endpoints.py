@@ -68,7 +68,8 @@ async def generate_key_fn(
     - metadata: Optional[dict] - Metadata for key, store information for key. Example metadata = {"team": "core-infra", "app": "app2", "email": "ishaan@berri.ai" }
     - permissions: Optional[dict] - key-specific permissions. Currently just used for turning off pii masking (if connected). Example - {"pii": false}
     - model_max_budget: Optional[dict] - key-specific model budget in USD. Example - {"text-davinci-002": 0.5, "gpt-3.5-turbo": 0.5}. IF null or {} then no model specific budget.
-
+    - model_rpm_limit: Optional[dict] - key-specific model rpm limit. Example - {"text-davinci-002": 1000, "gpt-3.5-turbo": 1000}. IF null or {} then no model specific rpm limit.
+    - model_tpm_limit: Optional[dict] - key-specific model tpm limit. Example - {"text-davinci-002": 1000, "gpt-3.5-turbo": 1000}. IF null or {} then no model specific tpm limit.
     Examples:
 
     1. Allow users to turn on/off pii masking
@@ -323,6 +324,9 @@ async def update_key_fn(
         # get non default values for key
         non_default_values = {}
         for k, v in data_json.items():
+            # this field gets stored in metadata
+            if key == "model_rpm_limit" or key == "model_tpm_limit":
+                continue
             if v is not None and v not in (
                 [],
                 {},
@@ -342,6 +346,25 @@ async def update_key_fn(
             )
             key_reset_at = datetime.now(timezone.utc) + timedelta(seconds=duration_s)
             non_default_values["budget_reset_at"] = key_reset_at
+
+        # Update metadata for virtual Key
+        if data.model_tpm_limit:
+            _metadata = existing_key_row.metadata or {}
+            if "model_tpm_limit" not in _metadata:
+                _metadata["model_tpm_limit"] = {}
+
+            _metadata["model_tpm_limit"].update(data.model_tpm_limit)
+            non_default_values["metadata"] = _metadata
+            non_default_values.pop("model_tpm_limit", None)
+
+        if data.model_rpm_limit:
+            _metadata = existing_key_row.metadata or {}
+            if "model_rpm_limit" not in _metadata:
+                _metadata["model_rpm_limit"] = {}
+
+            _metadata["model_rpm_limit"].update(data.model_rpm_limit)
+            non_default_values["metadata"] = _metadata
+            non_default_values.pop("model_rpm_limit", None)
 
         response = await prisma_client.update_data(
             token=key, data={**non_default_values, "token": key}
@@ -709,6 +732,8 @@ async def generate_key_helper_fn(
     allowed_cache_controls: Optional[list] = [],
     permissions: Optional[dict] = {},
     model_max_budget: Optional[dict] = {},
+    model_rpm_limit: Optional[dict] = {},
+    model_tpm_limit: Optional[dict] = {},
     teams: Optional[list] = None,
     organization_id: Optional[str] = None,
     table_name: Optional[Literal["key", "user"]] = None,
@@ -750,6 +775,15 @@ async def generate_key_helper_fn(
     aliases_json = json.dumps(aliases)
     config_json = json.dumps(config)
     permissions_json = json.dumps(permissions)
+
+    # Add model_rpm_limit and model_tpm_limit to metadata
+    if model_rpm_limit is not None:
+        metadata = metadata or {}
+        metadata["model_rpm_limit"] = model_rpm_limit
+    if model_tpm_limit is not None:
+        metadata = metadata or {}
+        metadata["model_tpm_limit"] = model_tpm_limit
+
     metadata_json = json.dumps(metadata)
     model_max_budget_json = json.dumps(model_max_budget)
     user_role = user_role

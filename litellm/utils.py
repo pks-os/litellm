@@ -8441,6 +8441,25 @@ def get_secret(
             with open(azure_federated_token_file, "r") as f:
                 oidc_token = f.read()
                 return oidc_token
+        elif oidc_provider == "file":
+            # Load token from a file
+            with open(oidc_aud, "r") as f:
+                oidc_token = f.read()
+                return oidc_token
+        elif oidc_provider == "env":
+            # Load token directly from an environment variable
+            oidc_token = os.getenv(oidc_aud)
+            if oidc_token is None:
+                raise ValueError(f"Environment variable {oidc_aud} not found")
+            return oidc_token
+        elif oidc_provider == "env_path":
+            # Load token from a file path specified in an environment variable
+            token_file_path = os.getenv(oidc_aud)
+            if token_file_path is None:
+                raise ValueError(f"Environment variable {oidc_aud} not found")
+            with open(token_file_path, "r") as f:
+                oidc_token = f.read()
+                return oidc_token
         else:
             raise ValueError("Unsupported OIDC provider")
 
@@ -8904,12 +8923,11 @@ class CustomStreamWrapper:
                 "finish_reason": finish_reason,
             }
         except Exception as e:
-            verbose_logger.error(
+            verbose_logger.exception(
                 "litellm.CustomStreamWrapper.handle_predibase_chunk(): Exception occured - {}".format(
                     str(e)
                 )
             )
-            verbose_logger.debug(traceback.format_exc())
             raise e
 
     def handle_huggingface_chunk(self, chunk):
@@ -8953,12 +8971,11 @@ class CustomStreamWrapper:
                 "finish_reason": finish_reason,
             }
         except Exception as e:
-            verbose_logger.error(
+            verbose_logger.exception(
                 "litellm.CustomStreamWrapper.handle_huggingface_chunk(): Exception occured - {}".format(
                     str(e)
                 )
             )
-            verbose_logger.debug(traceback.format_exc())
             raise e
 
     def handle_ai21_chunk(self, chunk):  # fake streaming
@@ -9181,12 +9198,11 @@ class CustomStreamWrapper:
                 "usage": usage,
             }
         except Exception as e:
-            verbose_logger.error(
+            verbose_logger.exception(
                 "litellm.CustomStreamWrapper.handle_openai_chat_completion_chunk(): Exception occured - {}".format(
                     str(e)
                 )
             )
-            verbose_logger.debug(traceback.format_exc())
             raise e
 
     def handle_azure_text_completion_chunk(self, chunk):
@@ -9266,13 +9282,12 @@ class CustomStreamWrapper:
                     return ""
             else:
                 return ""
-        except:
-            verbose_logger.error(
+        except Exception as e:
+            verbose_logger.exception(
                 "litellm.CustomStreamWrapper.handle_baseten_chunk(): Exception occured - {}".format(
                     str(e)
                 )
             )
-            verbose_logger.debug(traceback.format_exc())
             return ""
 
     def handle_cloudlfare_stream(self, chunk):
@@ -9506,13 +9521,12 @@ class CustomStreamWrapper:
                 "text": text,
                 "is_finished": True,
             }
-        except:
-            verbose_logger.error(
+        except Exception as e:
+            verbose_logger.exception(
                 "litellm.CustomStreamWrapper.handle_clarifai_chunk(): Exception occured - {}".format(
                     str(e)
                 )
             )
-            verbose_logger.debug(traceback.format_exc())
             return ""
 
     def model_response_creator(
@@ -10125,12 +10139,11 @@ class CustomStreamWrapper:
                                         tool["type"] = "function"
                             model_response.choices[0].delta = Delta(**_json_delta)
                         except Exception as e:
-                            verbose_logger.error(
-                                "litellm.CustomStreamWrapper.chunk_creator(): Exception occured - {}\n{}".format(
-                                    str(e), traceback.format_exc()
+                            verbose_logger.exception(
+                                "litellm.CustomStreamWrapper.chunk_creator(): Exception occured - {}".format(
+                                    str(e)
                                 )
                             )
-                            verbose_logger.debug(traceback.format_exc())
                             model_response.choices[0].delta = Delta()
                     else:
                         try:
@@ -11118,10 +11131,8 @@ def trim_messages(
             return final_messages, response_tokens
         return final_messages
     except Exception as e:  # [NON-Blocking, if error occurs just return final_messages
-        verbose_logger.error(
-            "Got exception while token trimming - {}\n{}".format(
-                str(e), traceback.format_exc()
-            )
+        verbose_logger.exception(
+            "Got exception while token trimming - {}".format(str(e))
         )
         return messages
 

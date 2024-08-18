@@ -585,6 +585,8 @@ class GenerateKeyRequest(GenerateRequestBase):
 
     model_config = ConfigDict(protected_namespaces=())
     send_invite_email: Optional[bool] = None
+    model_rpm_limit: Optional[dict] = None
+    model_tpm_limit: Optional[dict] = None
 
 
 class GenerateKeyResponse(GenerateKeyRequest):
@@ -1337,6 +1339,8 @@ class UserAPIKeyAuth(
     ] = None
     allowed_model_region: Optional[Literal["eu"]] = None
     parent_otel_span: Optional[Span] = None
+    rpm_limit_per_model: Optional[Dict[str, int]] = None
+    tpm_limit_per_model: Optional[Dict[str, int]] = None
 
     @model_validator(mode="before")
     @classmethod

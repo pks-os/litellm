@@ -24,6 +24,7 @@ from litellm import (
     verbose_logger,
 )
 from litellm.caching import DualCache, InMemoryCache, S3Cache
+from litellm.cost_calculator import _select_model_name_for_cost_calc
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.litellm_core_utils.redact_messages import (
     redact_message_input_output_from_logging,
@@ -37,6 +38,7 @@ from litellm.types.utils import (
     ModelResponse,
     StandardLoggingHiddenParams,
     StandardLoggingMetadata,
+    StandardLoggingModelInformation,
     StandardLoggingPayload,
     TextCompletionResponse,
     TranscriptionResponse,
@@ -272,6 +274,7 @@ class Logging:
                 headers = {}
             data = additional_args.get("complete_input_dict", {})
             api_base = str(additional_args.get("api_base", ""))
+            query_params = additional_args.get("query_params", {})
             if "key=" in api_base:
                 # Find the position of "key=" in the string
                 key_index = api_base.find("key=") + 4
@@ -346,9 +349,9 @@ class Logging:
                         self.model_call_details
                     )  # Expectation: any logger function passed in by the user should accept a dict object
                 except Exception as e:
-                    verbose_logger.error(
-                        "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while logging {}\n{}".format(
-                            str(e), traceback.format_exc()
+                    verbose_logger.exception(
+                        "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while logging {}".format(
+                            str(e)
                         )
                     )
             # Input Integration Logging -> If you want to log the fact that an attempt to call the model was made
@@ -398,9 +401,9 @@ class Logging:
                             callback_func=callback,
                         )
                 except Exception as e:
-                    verbose_logger.error(
-                        "litellm.Logging.pre_call(): Exception occured - {}\n{}".format(
-                            str(e), traceback.format_exc()
+                    verbose_logger.exception(
+                        "litellm.Logging.pre_call(): Exception occured - {}".format(
+                            str(e)
                         )
                     )
                     verbose_logger.debug(
@@ -408,10 +411,10 @@ class Logging:
                     )
                     if capture_exception:  # log this error to sentry for debugging
                         capture_exception(e)
-        except Exception:
-            verbose_logger.error(
-                "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while logging {}\n{}".format(
-                    str(e), traceback.format_exc()
+        except Exception as e:
+            verbose_logger.exception(
+                "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while logging {}".format(
+                    str(e)
                 )
             )
             verbose_logger.error(
@@ -456,9 +459,9 @@ class Logging:
                         self.model_call_details
                     )  # Expectation: any logger function passed in by the user should accept a dict object
                 except Exception as e:
-                    verbose_logger.debug(
-                        "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while logging {}\n{}".format(
-                            str(e), traceback.format_exc()
+                    verbose_logger.exception(
+                        "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while logging {}".format(
+                            str(e)
                         )
                     )
             original_response = redact_message_input_output_from_logging(
@@ -494,9 +497,9 @@ class Logging:
                             end_time=None,
                         )
                 except Exception as e:
-                    verbose_logger.error(
-                        "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while post-call logging with integrations {}\n{}".format(
-                            str(e), traceback.format_exc()
+                    verbose_logger.exception(
+                        "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while post-call logging with integrations {}".format(
+                            str(e)
                         )
                     )
                     verbose_logger.debug(
@@ -505,9 +508,9 @@ class Logging:
                     if capture_exception:  # log this error to sentry for debugging
                         capture_exception(e)
         except Exception as e:
-            verbose_logger.error(
-                "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while logging {}\n{}".format(
-                    str(e), traceback.format_exc()
+            verbose_logger.exception(
+                "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while logging {}".format(
+                    str(e)
                 )
             )
 
@@ -669,9 +672,9 @@ class Logging:
                             end_time=end_time,
                         )
                     except Exception as e:
-                        verbose_logger.error(
-                            "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while building complete streaming response in success logging {}\n{}".format(
-                                str(e), traceback.format_exc()
+                        verbose_logger.exception(
+                            "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while building complete streaming response in success logging {}".format(
+                                str(e)
                             )
                         )
                         complete_streaming_response = None
@@ -1248,9 +1251,9 @@ class Logging:
                     if capture_exception:  # log this error to sentry for debugging
                         capture_exception(e)
         except Exception as e:
-            verbose_logger.error(
-                "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while success logging {}\n{}".format(
-                    str(e), traceback.format_exc()
+            verbose_logger.exception(
+                "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while success logging {}".format(
+                    str(e)
                 ),
             )
 
@@ -1282,11 +1285,10 @@ class Logging:
                         end_time=end_time,
                     )
                 except Exception as e:
-                    print_verbose(
-                        "Error occurred building stream chunk in success logging: {}\n{}".format(
-                            str(e), traceback.format_exc()
-                        ),
-                        log_level="ERROR",
+                    verbose_logger.exception(
+                        "Error occurred building stream chunk in success logging: {}".format(
+                            str(e)
+                        )
                     )
                     complete_streaming_response = None
             else:
@@ -1779,9 +1781,9 @@ class Logging:
                     if capture_exception:  # log this error to sentry for debugging
                         capture_exception(e)
         except Exception as e:
-            verbose_logger.error(
-                "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while failure logging {}\n{}".format(
-                    str(e), traceback.format_exc()
+            verbose_logger.exception(
+                "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while failure logging {}".format(
+                    str(e)
                 )
             )
 
@@ -1817,10 +1819,10 @@ class Logging:
                         callback_func=callback,
                     )
             except Exception as e:
-                verbose_logger.error(
+                verbose_logger.exception(
                     "LiteLLM.LoggingError: [Non-Blocking] Exception occurred while success \
-                        logging {}\n{}\nCallback={}".format(
-                        str(e), traceback.format_exc(), callback
+                        logging {}\nCallback={}".format(
+                        str(e), callback
                     )
                 )
 
@@ -2294,6 +2296,38 @@ def get_standard_logging_object_payload(
 
             id = f"{id}_cache_hit{time.time()}"  # do not duplicate the request id
 
+        ## Get model cost information ##
+        base_model = _get_base_model_from_metadata(model_call_details=kwargs)
+        custom_pricing = use_custom_pricing_for_model(litellm_params=litellm_params)
+        model_cost_name = _select_model_name_for_cost_calc(
+            model=None,
+            completion_response=init_response_obj,
+            base_model=base_model,
+            custom_pricing=custom_pricing,
+        )
+        if model_cost_name is None:
+            model_cost_information = StandardLoggingModelInformation(
+                model_map_key="", model_map_value=None
+            )
+        else:
+            custom_llm_provider = kwargs.get("custom_llm_provider", None)
+
+            try:
+                _model_cost_information = litellm.get_model_info(
+                    model=model_cost_name, custom_llm_provider=custom_llm_provider
+                )
+                model_cost_information = StandardLoggingModelInformation(
+                    model_map_key=model_cost_name,
+                    model_map_value=_model_cost_information,
+                )
+            except Exception:
+                verbose_logger.debug(  # keep in debug otherwise it will trigger on every call
+                    "Model is not mapped in model cost map. Defaulting to None model_cost_information for standard_logging_payload"
+                )
+                model_cost_information = StandardLoggingModelInformation(
+                    model_map_key=model_cost_name, model_map_value=None
+                )
+
         payload: StandardLoggingPayload = StandardLoggingPayload(
             id=str(id),
             call_type=call_type or "",
@@ -2320,6 +2354,7 @@ def get_standard_logging_object_payload(
             ),
             model_parameters=kwargs.get("optional_params", None),
             hidden_params=clean_hidden_params,
+            model_map_information=model_cost_information,
         )
 
         verbose_logger.debug(
@@ -2328,9 +2363,7 @@ def get_standard_logging_object_payload(
 
         return payload
     except Exception as e:
-        verbose_logger.warning(
-            "Error creating standard logging object - {}\n{}".format(
-                str(e), traceback.format_exc()
-            )
+        verbose_logger.exception(
+            "Error creating standard logging object - {}".format(str(e))
         )
         return None
