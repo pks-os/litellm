@@ -47,6 +47,10 @@ from ..types.llms.openai import (
     AsyncAssistantEventHandler,
     AsyncAssistantStreamManager,
     AsyncCursorPage,
+    ChatCompletionToolChoiceFunctionParam,
+    ChatCompletionToolChoiceObjectParam,
+    ChatCompletionToolParam,
+    ChatCompletionToolParamFunctionChunk,
     HttpxBinaryResponseContent,
     MessageData,
     OpenAICreateThreadParamsMessage,
@@ -204,8 +208,8 @@ class AzureOpenAIConfig:
                         and api_version_day < "01"
                     )
                 ):
-                    if litellm.drop_params == True or (
-                        drop_params is not None and drop_params == True
+                    if litellm.drop_params is True or (
+                        drop_params is not None and drop_params is True
                     ):
                         pass
                     else:
@@ -216,8 +220,8 @@ class AzureOpenAIConfig:
                 elif value == "required" and (
                     api_version_year == "2024" and api_version_month <= "05"
                 ):  ## check if tool_choice value is supported ##
-                    if litellm.drop_params == True or (
-                        drop_params is not None and drop_params == True
+                    if litellm.drop_params is True or (
+                        drop_params is not None and drop_params is True
                     ):
                         pass
                     else:
@@ -227,8 +231,44 @@ class AzureOpenAIConfig:
                         )
                 else:
                     optional_params["tool_choice"] = value
+            elif param == "response_format" and isinstance(value, dict):
+                json_schema: Optional[dict] = None
+                schema_name: str = ""
+                if "response_schema" in value:
+                    json_schema = value["response_schema"]
+                    schema_name = "json_tool_call"
+                elif "json_schema" in value:
+                    json_schema = value["json_schema"]["schema"]
+                    schema_name = value["json_schema"]["name"]
+                """
+                Follow similar approach to anthropic - translate to a single tool call. 
+
+                When using tools in this way: - https://docs.anthropic.com/en/docs/build-with-claude/tool-use#json-mode
+                - You usually want to provide a single tool
+                - You should set tool_choice (see Forcing tool use) to instruct the model to explicitly use that tool
+                - Remember that the model will pass the input to the tool, so the name of the tool and description should be from the model’s perspective.
+                """
+                if json_schema is not None:
+                    _tool_choice = ChatCompletionToolChoiceObjectParam(
+                        type="function",
+                        function=ChatCompletionToolChoiceFunctionParam(
+                            name=schema_name
+                        ),
+                    )
+
+                    _tool = ChatCompletionToolParam(
+                        type="function",
+                        function=ChatCompletionToolParamFunctionChunk(
+                            name=schema_name, parameters=json_schema
+                        ),
+                    )
+
+                    optional_params["tools"] = [_tool]
+                    optional_params["tool_choice"] = _tool_choice
+                    optional_params["json_mode"] = True
             elif param in supported_openai_params:
                 optional_params[param] = value
+
         return optional_params
 
     def get_mapped_special_auth_params(self) -> dict:
@@ -403,6 +443,27 @@ def get_azure_ad_token_from_oidc(azure_ad_token: str):
     return azure_ad_token_access_token
 
 
+def _check_dynamic_azure_params(
+    azure_client_params: dict,
+    azure_client: Optional[Union[AzureOpenAI, AsyncAzureOpenAI]],
+) -> bool:
+    """
+    Returns True if user passed in client params != initialized azure client
+
+    Currently only implemented for api version
+    """
+    if azure_client is None:
+        return True
+
+    dynamic_params = ["api_version"]
+    for k, v in azure_client_params.items():
+        if k in dynamic_params and k == "api_version":
+            if v is not None and v != azure_client._custom_query["api-version"]:
+                return True
+
+    return False
+
+
 class AzureChatCompletion(BaseLLM):
     def __init__(self) -> None:
         super().__init__()
@@ -462,6 +523,28 @@ class AzureChatCompletion(BaseLLM):
 
         return azure_client
 
+    def make_sync_azure_openai_chat_completion_request(
+        self,
+        azure_client: AzureOpenAI,
+        data: dict,
+        timeout: Union[float, httpx.Timeout],
+    ):
+        """
+        Helper to:
+        - call chat.completions.create.with_raw_response when litellm.return_response_headers is True
+        - call chat.completions.create by default
+        """
+        try:
+            raw_response = azure_client.chat.completions.with_raw_response.create(
+                **data, timeout=timeout
+            )
+
+            headers = dict(raw_response.headers)
+            response = raw_response.parse()
+            return headers, response
+        except Exception as e:
+            raise e
+
     async def make_azure_openai_chat_completion_request(
         self,
         azure_client: AsyncAzureOpenAI,
@@ -494,6 +577,7 @@ class AzureChatCompletion(BaseLLM):
         api_version: str,
         api_type: str,
         azure_ad_token: str,
+        dynamic_params: bool,
         print_verbose: Callable,
         timeout: Union[float, httpx.Timeout],
         logging_obj: LiteLLMLoggingObj,
@@ -513,6 +597,7 @@ class AzureChatCompletion(BaseLLM):
                 )
 
             max_retries = optional_params.pop("max_retries", 2)
+            json_mode: Optional[bool] = optional_params.pop("json_mode", False)
 
             ### CHECK IF CLOUDFLARE AI GATEWAY ###
             ### if so - set the model as part of the base url
@@ -558,6 +643,7 @@ class AzureChatCompletion(BaseLLM):
                     return self.async_streaming(
                         logging_obj=logging_obj,
                         api_base=api_base,
+                        dynamic_params=dynamic_params,
                         data=data,
                         model=model,
                         api_key=api_key,
@@ -575,14 +661,17 @@ class AzureChatCompletion(BaseLLM):
                         api_version=api_version,
                         model=model,
                         azure_ad_token=azure_ad_token,
+                        dynamic_params=dynamic_params,
                         timeout=timeout,
                         client=client,
                         logging_obj=logging_obj,
+                        convert_tool_call_to_json_mode=json_mode,
                     )
             elif "stream" in optional_params and optional_params["stream"] == True:
                 return self.streaming(
                     logging_obj=logging_obj,
                     api_base=api_base,
+                    dynamic_params=dynamic_params,
                     data=data,
                     model=model,
                     api_key=api_key,
@@ -628,7 +717,8 @@ class AzureChatCompletion(BaseLLM):
                     if azure_ad_token.startswith("oidc/"):
                         azure_ad_token = get_azure_ad_token_from_oidc(azure_ad_token)
                     azure_client_params["azure_ad_token"] = azure_ad_token
-                if client is None:
+
+                if client is None or dynamic_params:
                     azure_client = AzureOpenAI(**azure_client_params)
                 else:
                     azure_client = client
@@ -640,7 +730,9 @@ class AzureChatCompletion(BaseLLM):
                             "api-version", api_version
                         )
 
-                response = azure_client.chat.completions.create(**data, timeout=timeout)  # type: ignore
+                headers, response = self.make_sync_azure_openai_chat_completion_request(
+                    azure_client=azure_client, data=data, timeout=timeout
+                )
                 stringified_response = response.model_dump()
                 ## LOGGING
                 logging_obj.post_call(
@@ -656,6 +748,7 @@ class AzureChatCompletion(BaseLLM):
                 return convert_to_model_response_object(
                     response_object=stringified_response,
                     model_response_object=model_response,
+                    convert_tool_call_to_json_mode=json_mode,
                 )
         except AzureOpenAIError as e:
             exception_mapping_worked = True
@@ -674,9 +767,11 @@ class AzureChatCompletion(BaseLLM):
         api_base: str,
         data: dict,
         timeout: Any,
+        dynamic_params: bool,
         model_response: ModelResponse,
         logging_obj: LiteLLMLoggingObj,
         azure_ad_token: Optional[str] = None,
+        convert_tool_call_to_json_mode: Optional[bool] = None,
         client=None,  # this is the AsyncAzureOpenAI
     ):
         response = None
@@ -707,15 +802,11 @@ class AzureChatCompletion(BaseLLM):
                 azure_client_params["azure_ad_token"] = azure_ad_token
 
             # setting Azure client
-            if client is None:
+            if client is None or dynamic_params:
                 azure_client = AsyncAzureOpenAI(**azure_client_params)
             else:
                 azure_client = client
-                if api_version is not None and isinstance(
-                    azure_client._custom_query, dict
-                ):
-                    # set api_version to version passed by user
-                    azure_client._custom_query.setdefault("api-version", api_version)
+
             ## LOGGING
             logging_obj.pre_call(
                 input=data["messages"],
@@ -742,11 +833,13 @@ class AzureChatCompletion(BaseLLM):
                 original_response=stringified_response,
                 additional_args={"complete_input_dict": data},
             )
+
             return convert_to_model_response_object(
                 response_object=stringified_response,
                 model_response_object=model_response,
                 hidden_params={"headers": headers},
                 _response_headers=headers,
+                convert_tool_call_to_json_mode=convert_tool_call_to_json_mode,
             )
         except AzureOpenAIError as e:
             ## LOGGING
@@ -786,6 +879,7 @@ class AzureChatCompletion(BaseLLM):
         api_base: str,
         api_key: str,
         api_version: str,
+        dynamic_params: bool,
         data: dict,
         model: str,
         timeout: Any,
@@ -815,13 +909,11 @@ class AzureChatCompletion(BaseLLM):
             if azure_ad_token.startswith("oidc/"):
                 azure_ad_token = get_azure_ad_token_from_oidc(azure_ad_token)
             azure_client_params["azure_ad_token"] = azure_ad_token
-        if client is None:
+
+        if client is None or dynamic_params:
             azure_client = AzureOpenAI(**azure_client_params)
         else:
             azure_client = client
-            if api_version is not None and isinstance(azure_client._custom_query, dict):
-                # set api_version to version passed by user
-                azure_client._custom_query.setdefault("api-version", api_version)
         ## LOGGING
         logging_obj.pre_call(
             input=data["messages"],
@@ -833,7 +925,9 @@ class AzureChatCompletion(BaseLLM):
                 "complete_input_dict": data,
             },
         )
-        response = azure_client.chat.completions.create(**data, timeout=timeout)
+        headers, response = self.make_sync_azure_openai_chat_completion_request(
+            azure_client=azure_client, data=data, timeout=timeout
+        )
         streamwrapper = CustomStreamWrapper(
             completion_stream=response,
             model=model,
@@ -848,6 +942,7 @@ class AzureChatCompletion(BaseLLM):
         api_base: str,
         api_key: str,
         api_version: str,
+        dynamic_params: bool,
         data: dict,
         model: str,
         timeout: Any,
@@ -873,15 +968,10 @@ class AzureChatCompletion(BaseLLM):
                 if azure_ad_token.startswith("oidc/"):
                     azure_ad_token = get_azure_ad_token_from_oidc(azure_ad_token)
                 azure_client_params["azure_ad_token"] = azure_ad_token
-            if client is None:
+            if client is None or dynamic_params:
                 azure_client = AsyncAzureOpenAI(**azure_client_params)
             else:
                 azure_client = client
-                if api_version is not None and isinstance(
-                    azure_client._custom_query, dict
-                ):
-                    # set api_version to version passed by user
-                    azure_client._custom_query.setdefault("api-version", api_version)
             ## LOGGING
             logging_obj.pre_call(
                 input=data["messages"],

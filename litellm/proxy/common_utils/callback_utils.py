@@ -101,34 +101,22 @@ def initialize_callbacks_on_proxy(
                 openai_moderations_object = _ENTERPRISE_OpenAI_Moderation()
                 imported_list.append(openai_moderations_object)
             elif isinstance(callback, str) and callback == "lakera_prompt_injection":
-                from enterprise.enterprise_hooks.lakera_ai import (
-                    _ENTERPRISE_lakeraAI_Moderation,
+                from litellm.proxy.guardrails.guardrail_hooks.lakera_ai import (
+                    lakeraAI_Moderation,
                 )
-
-                if premium_user != True:
-                    raise Exception(
-                        "Trying to use LakeraAI Prompt Injection"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
 
                 init_params = {}
                 if "lakera_prompt_injection" in callback_specific_params:
                     init_params = callback_specific_params["lakera_prompt_injection"]
-                lakera_moderations_object = _ENTERPRISE_lakeraAI_Moderation(
-                    **init_params
-                )
+                lakera_moderations_object = lakeraAI_Moderation(**init_params)
                 imported_list.append(lakera_moderations_object)
-            elif isinstance(callback, str) and callback == "aporio_prompt_injection":
-                from enterprise.enterprise_hooks.aporio_ai import _ENTERPRISE_Aporio
+            elif isinstance(callback, str) and callback == "aporia_prompt_injection":
+                from litellm.proxy.guardrails.guardrail_hooks.aporia_ai import (
+                    AporiaGuardrail,
+                )
 
-                if premium_user is not True:
-                    raise Exception(
-                        "Trying to use Aporio AI Guardrail"
-                        + CommonProxyErrors.not_premium_user.value
-                    )
-
-                aporio_guardrail_object = _ENTERPRISE_Aporio()
-                imported_list.append(aporio_guardrail_object)
+                aporia_guardrail_object = AporiaGuardrail()
+                imported_list.append(aporia_guardrail_object)
             elif isinstance(callback, str) and callback == "google_text_moderation":
                 from enterprise.enterprise_hooks.google_text_moderation import (
                     _ENTERPRISE_GoogleTextModeration,
@@ -295,3 +283,25 @@ def get_remaining_tokens_and_requests_from_request_data(data: Dict) -> Dict[str,
         headers[f"x-litellm-key-remaining-tokens-{model_group}"] = remaining_tokens
 
     return headers
+
+
+def get_applied_guardrails_header(request_data: Dict) -> Optional[Dict]:
+    _metadata = request_data.get("metadata", None) or {}
+    if "applied_guardrails" in _metadata:
+        return {
+            "x-litellm-applied-guardrails": ",".join(_metadata["applied_guardrails"]),
+        }
+
+    return None
+
+
+def add_guardrail_to_applied_guardrails_header(
+    request_data: Dict, guardrail_name: Optional[str]
+):
+    if guardrail_name is None:
+        return
+    _metadata = request_data.get("metadata", None) or {}
+    if "applied_guardrails" in _metadata:
+        _metadata["applied_guardrails"].append(guardrail_name)
+    else:
+        _metadata["applied_guardrails"] = [guardrail_name]

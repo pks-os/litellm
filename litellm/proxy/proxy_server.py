@@ -149,6 +149,7 @@ from litellm.proxy.common_utils.admin_ui_utils import (
     show_missing_vars_in_env,
 )
 from litellm.proxy.common_utils.callback_utils import (
+    get_applied_guardrails_header,
     get_remaining_tokens_and_requests_from_request_data,
     initialize_callbacks_on_proxy,
 )
@@ -168,7 +169,10 @@ from litellm.proxy.common_utils.openai_endpoint_utils import (
 )
 from litellm.proxy.fine_tuning_endpoints.endpoints import router as fine_tuning_router
 from litellm.proxy.fine_tuning_endpoints.endpoints import set_fine_tuning_config
-from litellm.proxy.guardrails.init_guardrails import initialize_guardrails
+from litellm.proxy.guardrails.init_guardrails import (
+    init_guardrails_v2,
+    initialize_guardrails,
+)
 from litellm.proxy.health_check import perform_health_check
 from litellm.proxy.health_endpoints._health_endpoints import router as health_router
 from litellm.proxy.hooks.prompt_injection_detection import (
@@ -538,6 +542,10 @@ def get_custom_headers(
             request_data
         )
         headers.update(remaining_tokens_header)
+
+        applied_guardrails = get_applied_guardrails_header(request_data)
+        if applied_guardrails:
+            headers.update(applied_guardrails)
 
     try:
         return {
@@ -1937,6 +1945,11 @@ class ProxyConfig:
                 async_only_mode=True  # only init async clients
             ),
         )  # type:ignore
+
+        # Guardrail settings
+        guardrails_v2 = config.get("guardrails", None)
+        if guardrails_v2:
+            init_guardrails_v2(all_guardrails=guardrails_v2)
         return router, router.get_model_list(), general_settings
 
     def get_model_info_with_id(self, model, db_model=False) -> RouterModelInfo:
@@ -2337,7 +2350,8 @@ async def initialize(
     config=None,
 ):
     global user_model, user_api_base, user_debug, user_detailed_debug, user_user_max_tokens, user_request_timeout, user_temperature, user_telemetry, user_headers, experimental, llm_model_list, llm_router, general_settings, master_key, user_custom_auth, prisma_client
-    generate_feedback_box()
+    if os.getenv("LITELLM_DONT_SHOW_FEEDBACK_BOX", "").lower() != "true":
+        generate_feedback_box()
     user_model = model
     user_debug = debug
     if debug is True:  # this needs to be first, so users can see Router init debugg
@@ -3139,7 +3153,7 @@ async def chat_completion(
 
         ### CALL HOOKS ### - modify outgoing data
         response = await proxy_logging_obj.post_call_success_hook(
-            user_api_key_dict=user_api_key_dict, response=response
+            data=data, user_api_key_dict=user_api_key_dict, response=response
         )
 
         hidden_params = (
@@ -3353,6 +3367,11 @@ async def completion(
                 media_type="text/event-stream",
                 headers=custom_headers,
             )
+        ### CALL HOOKS ### - modify outgoing data
+        response = await proxy_logging_obj.post_call_success_hook(
+            data=data, user_api_key_dict=user_api_key_dict, response=response
+        )
+
         fastapi_response.headers.update(
             get_custom_headers(
                 user_api_key_dict=user_api_key_dict,
@@ -8047,14 +8066,14 @@ async def login(request: Request):
             return redirect_response
         else:
             raise ProxyException(
-                message=f"Invalid credentials used to access UI. Passed in username: {username}, passed in password: {password}.\nNot valid credentials for {username}",
+                message=f"Invalid credentials used to access UI.\nNot valid credentials for {username}",
                 type=ProxyErrorTypes.auth_error,
                 param="invalid_credentials",
                 code=status.HTTP_401_UNAUTHORIZED,
             )
     else:
         raise ProxyException(
-            message=f"Invalid credentials used to access UI. Passed in username: {username}, passed in password: {password}.\nCheck 'UI_USERNAME', 'UI_PASSWORD' in .env file",
+            message="Invalid credentials used to access UI.\nCheck 'UI_USERNAME', 'UI_PASSWORD' in .env file",
             type=ProxyErrorTypes.auth_error,
             param="invalid_credentials",
             code=status.HTTP_401_UNAUTHORIZED,
