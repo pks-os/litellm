@@ -95,7 +95,9 @@ def convert_key_logging_metadata_to_callback(
     for var, value in data.callback_vars.items():
         if team_callback_settings_obj.callback_vars is None:
             team_callback_settings_obj.callback_vars = {}
-        team_callback_settings_obj.callback_vars[var] = litellm.get_secret(value)
+        team_callback_settings_obj.callback_vars[var] = (
+            litellm.utils.get_secret(value, default_value=value) or value
+        )
 
     return team_callback_settings_obj
 
@@ -130,7 +132,6 @@ def _get_dynamic_logging_metadata(
                 data=AddTeamCallback(**item),
                 team_callback_settings_obj=callback_settings_obj,
             )
-
     return callback_settings_obj
 
 
@@ -224,7 +225,7 @@ async def add_litellm_data_to_request(
         user_api_key_dict, "team_alias", None
     )
 
-    ### KEY-LEVEL Contorls
+    ### KEY-LEVEL Controls
     key_metadata = user_api_key_dict.metadata
     if "cache" in key_metadata:
         data["cache"] = {}
@@ -232,6 +233,51 @@ async def add_litellm_data_to_request(
             for k, v in key_metadata["cache"].items():
                 if k in SupportedCacheControls:
                     data["cache"][k] = v
+
+    ## KEY-LEVEL SPEND LOGS / TAGS
+    if "tags" in key_metadata and key_metadata["tags"] is not None:
+        if "tags" in data[_metadata_variable_name] and isinstance(
+            data[_metadata_variable_name]["tags"], list
+        ):
+            data[_metadata_variable_name]["tags"].extend(key_metadata["tags"])
+        else:
+            data[_metadata_variable_name]["tags"] = key_metadata["tags"]
+    if "spend_logs_metadata" in key_metadata and isinstance(
+        key_metadata["spend_logs_metadata"], dict
+    ):
+        if "spend_logs_metadata" in data[_metadata_variable_name] and isinstance(
+            data[_metadata_variable_name]["spend_logs_metadata"], dict
+        ):
+            data[_metadata_variable_name]["spend_logs_metadata"].update(
+                key_metadata["spend_logs_metadata"]
+            )
+        else:
+            data[_metadata_variable_name]["spend_logs_metadata"] = key_metadata[
+                "spend_logs_metadata"
+            ]
+
+    ## TEAM-LEVEL SPEND LOGS/TAGS
+    team_metadata = user_api_key_dict.team_metadata or {}
+    if "tags" in team_metadata and team_metadata["tags"] is not None:
+        if "tags" in data[_metadata_variable_name] and isinstance(
+            data[_metadata_variable_name]["tags"], list
+        ):
+            data[_metadata_variable_name]["tags"].extend(team_metadata["tags"])
+        else:
+            data[_metadata_variable_name]["tags"] = team_metadata["tags"]
+    if "spend_logs_metadata" in team_metadata and isinstance(
+        team_metadata["spend_logs_metadata"], dict
+    ):
+        if "spend_logs_metadata" in data[_metadata_variable_name] and isinstance(
+            data[_metadata_variable_name]["spend_logs_metadata"], dict
+        ):
+            data[_metadata_variable_name]["spend_logs_metadata"].update(
+                team_metadata["spend_logs_metadata"]
+            )
+        else:
+            data[_metadata_variable_name]["spend_logs_metadata"] = team_metadata[
+                "spend_logs_metadata"
+            ]
 
     # Team spend, budget - used by prometheus.py
     data[_metadata_variable_name][

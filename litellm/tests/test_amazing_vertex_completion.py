@@ -501,6 +501,8 @@ async def test_async_vertexai_streaming_response():
             assert len(complete_response) > 0
         except litellm.RateLimitError as e:
             pass
+        except litellm.APIConnectionError:
+            pass
         except litellm.Timeout as e:
             pass
         except litellm.InternalServerError as e:
@@ -1558,6 +1560,16 @@ async def test_gemini_pro_json_schema_args_sent_httpx_openai_schema(
                     "response_schema"
                     in mock_call.call_args.kwargs["json"]["generationConfig"]
                 )
+                assert (
+                    "response_mime_type"
+                    in mock_call.call_args.kwargs["json"]["generationConfig"]
+                )
+                assert (
+                    mock_call.call_args.kwargs["json"]["generationConfig"][
+                        "response_mime_type"
+                    ]
+                    == "application/json"
+                )
             else:
                 assert (
                     "response_schema"
@@ -1820,6 +1832,36 @@ def test_vertexai_embedding():
             input=["good morning from litellm", "this is another item"],
         )
         print(f"response:", response)
+    except litellm.RateLimitError as e:
+        pass
+    except Exception as e:
+        pytest.fail(f"Error occurred: {e}")
+
+
+@pytest.mark.asyncio()
+async def test_vertexai_multimodal_embedding():
+    load_vertex_ai_credentials()
+
+    try:
+        litellm.set_verbose = True
+        response = await litellm.aembedding(
+            model="vertex_ai/multimodalembedding@001",
+            input=[
+                {
+                    "image": {
+                        "gcsUri": "gs://cloud-samples-data/vertex-ai/llm/prompts/landmark1.png"
+                    },
+                    "text": "this is a unicorn",
+                },
+            ],
+        )
+        print(f"response:", response)
+        assert response.model == "multimodalembedding@001"
+
+        _response_data = response.data[0]
+
+        assert "imageEmbedding" in _response_data
+        assert "textEmbedding" in _response_data
     except litellm.RateLimitError as e:
         pass
     except Exception as e:

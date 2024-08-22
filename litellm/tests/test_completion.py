@@ -707,6 +707,8 @@ def test_gemini_completion_call_error():
         print(f"response: {response}")
         for chunk in response:
             print(chunk)
+    except litellm.RateLimitError:
+        pass
     except litellm.InternalServerError:
         pass
     except Exception as e:
@@ -3281,9 +3283,9 @@ def test_completion_together_ai_mixtral():
 # test_completion_together_ai_mixtral()
 
 
-def test_completion_together_ai_yi_chat():
+def test_completion_together_ai_llama():
     litellm.set_verbose = True
-    model_name = "together_ai/mistralai/Mistral-7B-Instruct-v0.1"
+    model_name = "together_ai/meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo"
     try:
         messages = [
             {"role": "user", "content": "What llm are you?"},
@@ -4032,7 +4034,9 @@ def test_completion_gemini(model):
         # Add any assertions,here to check the response
         print(response)
         assert response.choices[0]["index"] == 0
-    except litellm.APIError as e:
+    except litellm.RateLimitError:
+        pass
+    except litellm.APIError:
         pass
     except Exception as e:
         if "InternalServerError" in str(e):
