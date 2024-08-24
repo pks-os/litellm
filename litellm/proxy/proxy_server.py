@@ -311,6 +311,24 @@ except Exception as e:
 server_root_path = os.getenv("SERVER_ROOT_PATH", "")
 _license_check = LicenseCheck()
 premium_user: bool = _license_check.is_premium()
+global_max_parallel_request_retries_env: Optional[str] = os.getenv(
+    "LITELLM_GLOBAL_MAX_PARALLEL_REQUEST_RETRIES"
+)
+if global_max_parallel_request_retries_env is None:
+    global_max_parallel_request_retries: int = 3
+else:
+    global_max_parallel_request_retries = int(global_max_parallel_request_retries_env)
+
+global_max_parallel_request_retry_timeout_env: Optional[str] = os.getenv(
+    "LITELLM_GLOBAL_MAX_PARALLEL_REQUEST_RETRY_TIMEOUT"
+)
+if global_max_parallel_request_retry_timeout_env is None:
+    global_max_parallel_request_retry_timeout: float = 60.0
+else:
+    global_max_parallel_request_retry_timeout = float(
+        global_max_parallel_request_retry_timeout_env
+    )
+
 ui_link = f"{server_root_path}/ui/"
 ui_message = (
     f"👉 [```LiteLLM Admin Panel on /ui```]({ui_link}). Create, Edit Keys with SSO"
@@ -1959,7 +1977,9 @@ class ProxyConfig:
         # Guardrail settings
         guardrails_v2 = config.get("guardrails", None)
         if guardrails_v2:
-            init_guardrails_v2(all_guardrails=guardrails_v2)
+            init_guardrails_v2(
+                all_guardrails=guardrails_v2, config_file_path=config_file_path
+            )
         return router, router.get_model_list(), general_settings
 
     def get_model_info_with_id(self, model, db_model=False) -> RouterModelInfo:
@@ -3019,8 +3039,8 @@ def model_list(
 @backoff.on_exception(
     backoff.expo,
     Exception,  # base exception to catch for the backoff
-    max_tries=litellm.num_retries or 3,  # maximum number of retries
-    max_time=litellm.request_timeout or 60,  # maximum total time to retry for
+    max_tries=global_max_parallel_request_retries,  # maximum number of retries
+    max_time=global_max_parallel_request_retry_timeout,  # maximum total time to retry for
     on_backoff=on_backoff,  # specifying the function to call on backoff
     giveup=giveup,
     logger=verbose_proxy_logger,
@@ -4884,6 +4904,11 @@ async def run_thread(
 
 
 ######################################################################
+@router.get(
+    "/{provider}/v1/batches",
+    dependencies=[Depends(user_api_key_auth)],
+    tags=["batch"],
+)
 @router.post(
     "/v1/batches",
     dependencies=[Depends(user_api_key_auth)],
@@ -4897,6 +4922,7 @@ async def run_thread(
 async def create_batch(
     request: Request,
     fastapi_response: Response,
+    provider: Optional[str] = None,
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
 ):
     """
@@ -4943,9 +4969,10 @@ async def create_batch(
 
         _create_batch_data = CreateBatchRequest(**data)
 
-        # for now use custom_llm_provider=="openai" -> this will change as LiteLLM adds more providers for acreate_batch
+        if provider is None:
+            provider = "openai"
         response = await litellm.acreate_batch(
-            custom_llm_provider="openai", **_create_batch_data
+            custom_llm_provider=provider, **_create_batch_data  # type: ignore
         )
 
         ### ALERTING ###
@@ -5002,6 +5029,11 @@ async def create_batch(
 
 
 @router.get(
+    "/{provider}/v1/batches/{batch_id:path}",
+    dependencies=[Depends(user_api_key_auth)],
+    tags=["batch"],
+)
+@router.get(
     "/v1/batches/{batch_id:path}",
     dependencies=[Depends(user_api_key_auth)],
     tags=["batch"],
@@ -5015,6 +5047,7 @@ async def retrieve_batch(
     request: Request,
     fastapi_response: Response,
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
+    provider: Optional[str] = None,
     batch_id: str = Path(
         title="Batch ID to retrieve", description="The ID of the batch to retrieve"
     ),
@@ -5039,9 +5072,10 @@ async def retrieve_batch(
             batch_id=batch_id,
         )
 
-        # for now use custom_llm_provider=="openai" -> this will change as LiteLLM adds more providers for acreate_batch
+        if provider is None:
+            provider = "openai"
         response = await litellm.aretrieve_batch(
-            custom_llm_provider="openai", **_retrieve_batch_request
+            custom_llm_provider=provider, **_retrieve_batch_request  # type: ignore
         )
 
         ### ALERTING ###
@@ -5099,6 +5133,11 @@ async def retrieve_batch(
 
 
 @router.get(
+    "/{provider}/v1/batches",
+    dependencies=[Depends(user_api_key_auth)],
+    tags=["batch"],
+)
+@router.get(
     "/v1/batches",
     dependencies=[Depends(user_api_key_auth)],
     tags=["batch"],
@@ -5110,6 +5149,7 @@ async def retrieve_batch(
 )
 async def list_batches(
     fastapi_response: Response,
+    provider: Optional[str] = None,
     limit: Optional[int] = None,
     after: Optional[str] = None,
     user_api_key_dict: UserAPIKeyAuth = Depends(user_api_key_auth),
@@ -5130,9 +5170,10 @@ async def list_batches(
     global proxy_logging_obj
     verbose_proxy_logger.debug("GET /v1/batches after={} limit={}".format(after, limit))
     try:
-        # for now use custom_llm_provider=="openai" -> this will change as LiteLLM adds more providers for acreate_batch
+        if provider is None:
+            provider = "openai"
         response = await litellm.alist_batches(
-            custom_llm_provider="openai",
+            custom_llm_provider=provider,  # type: ignore
             after=after,
             limit=limit,
         )

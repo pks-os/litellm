@@ -6,9 +6,15 @@ model_list:
       api_base: https://exampleopenaiendpoint-production.up.railway.app/
 
 guardrails:
-  - guardrail_name: "bedrock-pre-guard"
+  - guardrail_name: "custom-pre-guard"
     litellm_params:
-      guardrail: bedrock  # supported values: "aporia", "bedrock", "lakera"
+      guardrail: custom_guardrail.myCustomGuardrail  
+      mode: "pre_call"
+  - guardrail_name: "custom-during-guard"
+    litellm_params:
+      guardrail: custom_guardrail.myCustomGuardrail  
+      mode: "during_call"
+  - guardrail_name: "custom-post-guard"
+    litellm_params:
+      guardrail: custom_guardrail.myCustomGuardrail
       mode: "post_call"
-      guardrailIdentifier: ff6ujrregl1q
-      guardrailVersion: "DRAFT"

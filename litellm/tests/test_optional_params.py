@@ -499,3 +499,49 @@ def test_vertex_safety_settings(provider):
         model="gemini-1.5-pro", custom_llm_provider=provider
     )
     assert len(optional_params) == 1
+
+
+@pytest.mark.parametrize(
+    "model, provider, expectedAddProp",
+    [("gemini-1.5-pro", "vertex_ai_beta", False), ("gpt-3.5-turbo", "openai", True)],
+)
+def test_parse_additional_properties_json_schema(model, provider, expectedAddProp):
+    optional_params = get_optional_params(
+        model=model,
+        custom_llm_provider=provider,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "math_reasoning",
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "steps": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "explanation": {"type": "string"},
+                                    "output": {"type": "string"},
+                                },
+                                "required": ["explanation", "output"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        "final_answer": {"type": "string"},
+                    },
+                    "required": ["steps", "final_answer"],
+                    "additionalProperties": False,
+                },
+                "strict": True,
+            },
+        },
+    )
+
+    print(optional_params)
+
+    if provider == "vertex_ai_beta":
+        schema = optional_params["response_schema"]
+    elif provider == "openai":
+        schema = optional_params["response_format"]["json_schema"]["schema"]
+    assert ("additionalProperties" in schema) == expectedAddProp

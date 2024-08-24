@@ -2323,6 +2323,7 @@ def get_litellm_params(
     output_cost_per_second=None,
     cooldown_time=None,
     text_completion=None,
+    azure_ad_token_provider=None,
     user_continue_message=None,
 ):
     litellm_params = {
@@ -2348,6 +2349,7 @@ def get_litellm_params(
         "output_cost_per_second": output_cost_per_second,
         "cooldown_time": cooldown_time,
         "text_completion": text_completion,
+        "azure_ad_token_provider": azure_ad_token_provider,
         "user_continue_message": user_continue_message,
     }
 
@@ -2685,6 +2687,24 @@ def get_optional_params_embeddings(
     return final_params
 
 
+def _remove_additional_properties(schema):
+    if isinstance(schema, dict):
+        # Remove the 'additionalProperties' key if it exists and is set to False
+        if "additionalProperties" in schema and schema["additionalProperties"] is False:
+            del schema["additionalProperties"]
+
+        # Recursively process all dictionary values
+        for key, value in schema.items():
+            _remove_additional_properties(value)
+
+    elif isinstance(schema, list):
+        # Recursively process all items in the list
+        for item in schema:
+            _remove_additional_properties(item)
+
+    return schema
+
+
 def get_optional_params(
     # use the openai defaults
     # https://platform.openai.com/docs/api-reference/chat/create
@@ -2872,7 +2892,21 @@ def get_optional_params(
         non_default_params["response_format"] = type_to_response_format_param(
             response_format=non_default_params["response_format"]
         )
-
+        # # clean out 'additionalProperties = False'. Causes vertexai/gemini OpenAI API Schema errors - https://github.com/langchain-ai/langchainjs/issues/5240
+        if non_default_params["response_format"].get("json_schema", {}).get(
+            "schema"
+        ) is not None and custom_llm_provider in [
+            "gemini",
+            "vertex_ai",
+            "vertex_ai_beta",
+        ]:
+            old_schema = copy.deepcopy(
+                non_default_params["response_format"]
+                .get("json_schema", {})
+                .get("schema")
+            )
+            new_schema = _remove_additional_properties(schema=old_schema)
+            non_default_params["response_format"]["json_schema"]["schema"] = new_schema
     if "tools" in non_default_params and isinstance(
         non_default_params, list
     ):  # fixes https://github.com/BerriAI/litellm/issues/4933
@@ -4301,6 +4335,7 @@ def get_supported_openai_params(
             "frequency_penalty",
             "tools",
             "tool_choice",
+            "response_format",
         ]
     elif custom_llm_provider == "ai21":
         return [

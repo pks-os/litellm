@@ -943,7 +943,9 @@ def completion(
             output_cost_per_token=output_cost_per_token,
             cooldown_time=cooldown_time,
             text_completion=kwargs.get("text_completion"),
+            azure_ad_token_provider=kwargs.get("azure_ad_token_provider"),
             user_continue_message=kwargs.get("user_continue_message"),
+
         )
         logging.update_environment_variables(
             model=model,
@@ -3247,6 +3249,10 @@ def embedding(
         "model_config",
         "cooldown_time",
         "tags",
+        "azure_ad_token_provider",
+        "tenant_id",
+        "client_id",
+        "client_secret",
         "extra_headers",
     ]
     default_params = openai_params + litellm_params
@@ -4825,7 +4831,7 @@ def speech(
 async def ahealth_check(
     model_params: dict,
     mode: Optional[
-        Literal["completion", "embedding", "image_generation", "chat"]
+        Literal["completion", "embedding", "image_generation", "chat", "batch"]
     ] = None,
     prompt: Optional[str] = None,
     input: Optional[List] = None,
