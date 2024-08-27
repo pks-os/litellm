@@ -1095,7 +1095,7 @@ class VertexLLM(BaseLLM):
         if not self._credentials or not self._credentials.token:
             raise RuntimeError("Could not resolve API token from the environment")
 
-        return self._credentials.token, self.project_id
+        return self._credentials.token, project_id or self.project_id
 
     def is_using_v1beta1_features(self, optional_params: dict) -> bool:
         """
@@ -1160,6 +1160,15 @@ class VertexLLM(BaseLLM):
                 url = f"https://{vertex_location}-aiplatform.googleapis.com/{version}/projects/{vertex_project}/locations/{vertex_location}/publishers/google/models/{model}:{endpoint}?alt=sse"
             else:
                 url = f"https://{vertex_location}-aiplatform.googleapis.com/{version}/projects/{vertex_project}/locations/{vertex_location}/publishers/google/models/{model}:{endpoint}"
+
+            # if model is only numeric chars then it's a fine tuned gemini model
+            # model = 4965075652664360960
+            # send to this url: url = f"https://{vertex_location}-aiplatform.googleapis.com/{version}/projects/{vertex_project}/locations/{vertex_location}/endpoints/{model}:{endpoint}"
+            if model.isdigit():
+                # It's a fine-tuned Gemini model
+                url = f"https://{vertex_location}-aiplatform.googleapis.com/{version}/projects/{vertex_project}/locations/{vertex_location}/endpoints/{model}:{endpoint}"
+                if stream is True:
+                    url += "?alt=sse"
 
         if (
             api_base is not None
