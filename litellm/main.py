@@ -82,8 +82,6 @@ from .llms import (
     bedrock,
     clarifai,
     cloudflare,
-    cohere,
-    cohere_chat,
     gemini,
     huggingface_restapi,
     maritalk,
@@ -97,8 +95,6 @@ from .llms import (
     replicate,
     together_ai,
     triton,
-    vertex_ai,
-    vertex_ai_anthropic,
     vllm,
     watsonx,
 )
@@ -107,6 +103,9 @@ from .llms.anthropic_text import AnthropicTextCompletion
 from .llms.azure import AzureChatCompletion, _check_dynamic_azure_params
 from .llms.azure_text import AzureTextCompletion
 from .llms.bedrock_httpx import BedrockConverseLLM, BedrockLLM
+from .llms.cohere import chat as cohere_chat
+from .llms.cohere import completion as cohere_completion  # type: ignore
+from .llms.cohere import embed as cohere_embed
 from .llms.custom_llm import CustomLLM, custom_chat_llm_router
 from .llms.databricks import DatabricksChatCompletion
 from .llms.huggingface_restapi import Huggingface
@@ -119,12 +118,20 @@ from .llms.prompt_templates.factory import (
     prompt_factory,
     stringify_json_tool_call_content,
 )
-from .llms.sagemaker import SagemakerLLM
+from .llms.sagemaker.sagemaker import SagemakerLLM
 from .llms.text_completion_codestral import CodestralTextCompletion
 from .llms.text_to_speech.vertex_ai import VertexTextToSpeechAPI
 from .llms.triton import TritonChatCompletion
-from .llms.vertex_ai_partner import VertexAIPartnerModels
-from .llms.vertex_httpx import VertexLLM
+from .llms.vertex_ai_and_google_ai_studio import (
+    vertex_ai_anthropic,
+    vertex_ai_non_gemini,
+)
+from .llms.vertex_ai_and_google_ai_studio.vertex_ai_partner_models.main import (
+    VertexAIPartnerModels,
+)
+from .llms.vertex_ai_and_google_ai_studio.vertex_and_google_ai_studio_gemini import (
+    VertexLLM,
+)
 from .llms.watsonx import IBMWatsonXAI
 from .types.llms.openai import HttpxBinaryResponseContent
 from .types.utils import (
@@ -445,7 +452,12 @@ async def _async_streaming(response, model, custom_llm_provider, args):
             print_verbose(f"line in async streaming: {line}")
             yield line
     except Exception as e:
-        raise e
+        custom_llm_provider = custom_llm_provider or "openai"
+        raise exception_type(
+            model=model,
+            custom_llm_provider=custom_llm_provider,
+            original_exception=e,
+        )
 
 
 def mock_completion(
@@ -1645,7 +1657,7 @@ def completion(
             if extra_headers is not None:
                 headers.update(extra_headers)
 
-            model_response = cohere.completion(
+            model_response = cohere_completion.completion(
                 model=model,
                 messages=messages,
                 api_base=api_base,
@@ -2008,7 +2020,7 @@ def completion(
                 model_response=model_response,
                 print_verbose=print_verbose,
                 optional_params=new_params,
-                litellm_params=litellm_params,
+                litellm_params=litellm_params,  # type: ignore
                 logger_fn=logger_fn,
                 encoding=encoding,
                 vertex_location=vertex_ai_location,
@@ -2068,6 +2080,7 @@ def completion(
                 model.startswith("meta/")
                 or model.startswith("mistral")
                 or model.startswith("codestral")
+                or model.startswith("jamba")
             ):
                 model_response = vertex_partner_models_chat_completion.completion(
                     model=model,
@@ -2095,7 +2108,7 @@ def completion(
                     model_response=model_response,
                     print_verbose=print_verbose,
                     optional_params=new_params,
-                    litellm_params=litellm_params,
+                    litellm_params=litellm_params,  # type: ignore
                     logger_fn=logger_fn,
                     encoding=encoding,
                     vertex_location=vertex_ai_location,
@@ -2111,7 +2124,7 @@ def completion(
                     extra_headers=extra_headers,
                 )
             else:
-                model_response = vertex_ai.completion(
+                model_response = vertex_ai_non_gemini.completion(
                     model=model,
                     messages=messages,
                     model_response=model_response,
@@ -3457,7 +3470,7 @@ def embedding(
                 headers = extra_headers
             else:
                 headers = {}
-            response = cohere.embedding(
+            response = cohere_embed.embedding(
                 model=model,
                 input=input,
                 optional_params=optional_params,
@@ -3557,7 +3570,7 @@ def embedding(
                     print_verbose=print_verbose,
                 )
             else:
-                response = vertex_ai.embedding(
+                response = vertex_ai_non_gemini.embedding(
                     model=model,
                     input=input,
                     encoding=encoding,
@@ -3758,7 +3771,7 @@ async def atext_completion(
         else:
             # Call the synchronous function using run_in_executor
             response = await loop.run_in_executor(None, func_with_context)
-        if kwargs.get("stream", False) == True:  # return an async generator
+        if kwargs.get("stream", False) is True:  # return an async generator
             return TextCompletionStreamWrapper(
                 completion_stream=_async_streaming(
                     response=response,
@@ -3767,6 +3780,7 @@ async def atext_completion(
                     args=args,
                 ),
                 model=model,
+                custom_llm_provider=custom_llm_provider,
             )
         else:
             transformed_logprobs = None
@@ -4040,11 +4054,14 @@ def text_completion(
         **kwargs,
         **optional_params,
     )
-    if kwargs.get("acompletion", False) == True:
+    if kwargs.get("acompletion", False) is True:
         return response
-    if stream == True or kwargs.get("stream", False) == True:
+    if stream is True or kwargs.get("stream", False) is True:
         response = TextCompletionStreamWrapper(
-            completion_stream=response, model=model, stream_options=stream_options
+            completion_stream=response,
+            model=model,
+            stream_options=stream_options,
+            custom_llm_provider=custom_llm_provider,
         )
         return response
     transformed_logprobs = None

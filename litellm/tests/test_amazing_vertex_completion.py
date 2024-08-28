@@ -28,7 +28,9 @@ from litellm import (
     completion_cost,
     embedding,
 )
-from litellm.llms.vertex_ai import _gemini_convert_messages_with_history
+from litellm.llms.vertex_ai_and_google_ai_studio.vertex_and_google_ai_studio_gemini import (
+    _gemini_convert_messages_with_history,
+)
 from litellm.tests.test_streaming import streaming_format_tests
 
 litellm.num_retries = 3
@@ -2063,7 +2065,9 @@ def test_prompt_factory_nested():
 
 
 def test_get_token_url():
-    from litellm.llms.vertex_httpx import VertexLLM
+    from litellm.llms.vertex_ai_and_google_ai_studio.vertex_and_google_ai_studio_gemini import (
+        VertexLLM,
+    )
 
     vertex_llm = VertexLLM()
     vertex_ai_project = "adroit-crow-413218"
@@ -2199,3 +2203,310 @@ async def test_completion_fine_tuned_model():
         # Optional: Print for debugging
         print("Arguments passed to Vertex AI:", args_to_vertexai)
         print("Response:", response)
+
+
+def mock_gemini_request(*args, **kwargs):
+    print(f"kwargs: {kwargs}")
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"Content-Type": "application/json"}
+    if "cachedContents" in kwargs["url"]:
+        mock_response.json.return_value = {
+            "name": "cachedContents/4d2kd477o3pg",
+            "model": "models/gemini-1.5-flash-001",
+            "createTime": "2024-08-26T22:31:16.147190Z",
+            "updateTime": "2024-08-26T22:31:16.147190Z",
+            "expireTime": "2024-08-26T22:36:15.548934784Z",
+            "displayName": "",
+            "usageMetadata": {"totalTokenCount": 323383},
+        }
+    else:
+        mock_response.json.return_value = {
+            "candidates": [
+                {
+                    "content": {
+                        "parts": [
+                            {
+                                "text": "Please provide me with the text of the legal agreement"
+                            }
+                        ],
+                        "role": "model",
+                    },
+                    "finishReason": "MAX_TOKENS",
+                    "index": 0,
+                    "safetyRatings": [
+                        {
+                            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                            "probability": "NEGLIGIBLE",
+                        },
+                        {
+                            "category": "HARM_CATEGORY_HATE_SPEECH",
+                            "probability": "NEGLIGIBLE",
+                        },
+                        {
+                            "category": "HARM_CATEGORY_HARASSMENT",
+                            "probability": "NEGLIGIBLE",
+                        },
+                        {
+                            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                            "probability": "NEGLIGIBLE",
+                        },
+                    ],
+                }
+            ],
+            "usageMetadata": {
+                "promptTokenCount": 40049,
+                "candidatesTokenCount": 10,
+                "totalTokenCount": 40059,
+                "cachedContentTokenCount": 40012,
+            },
+        }
+
+    return mock_response
+
+
+gemini_context_caching_messages = [
+    # System Message
+    {
+        "role": "system",
+        "content": [
+            {
+                "type": "text",
+                "text": "Here is the full text of a complex legal agreement" * 4000,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+    },
+    # marked for caching with the cache_control parameter, so that this checkpoint can read from the previous cache.
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "What are the key terms and conditions in this agreement?",
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+    },
+    {
+        "role": "assistant",
+        "content": "Certainly! the key terms and conditions are the following: the contract is 1 year long for $10/mo",
+    },
+    # The final turn is marked with cache-control, for continuing in followups.
+    {
+        "role": "user",
+        "content": [
+            {
+                "type": "text",
+                "text": "What are the key terms and conditions in this agreement?",
+            }
+        ],
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_gemini_context_caching_anthropic_format():
+    from litellm.llms.custom_httpx.http_handler import HTTPHandler
+
+    litellm.set_verbose = True
+    client = HTTPHandler(concurrent_limit=1)
+    with patch.object(client, "post", side_effect=mock_gemini_request) as mock_client:
+        try:
+            response = litellm.completion(
+                model="gemini/gemini-1.5-flash-001",
+                messages=gemini_context_caching_messages,
+                temperature=0.2,
+                max_tokens=10,
+                client=client,
+            )
+
+        except Exception as e:
+            print(e)
+
+        assert mock_client.call_count == 2
+
+        first_call_args = mock_client.call_args_list[0].kwargs
+
+        print(f"first_call_args: {first_call_args}")
+
+        assert "cachedContents" in first_call_args["url"]
+
+        # assert "cache_read_input_tokens" in response.usage
+        # assert "cache_creation_input_tokens" in response.usage
+
+        # # Assert either a cache entry was created or cache was read - changes depending on the anthropic api ttl
+        # assert (response.usage.cache_read_input_tokens > 0) or (
+        #     response.usage.cache_creation_input_tokens > 0
+        # )
+
+        check_cache_mock = MagicMock()
+        client.get = check_cache_mock
+        try:
+            response = litellm.completion(
+                model="gemini/gemini-1.5-flash-001",
+                messages=gemini_context_caching_messages,
+                temperature=0.2,
+                max_tokens=10,
+                client=client,
+            )
+
+        except Exception as e:
+            print(e)
+
+        check_cache_mock.assert_called_once()
+        assert mock_client.call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_partner_models_httpx_ai21():
+    litellm.set_verbose = True
+    model = "vertex_ai/jamba-1.5-mini@001"
+
+    messages = [
+        {
+            "role": "system",
+            "content": "Your name is Litellm Bot, you are a helpful assistant",
+        },
+        {
+            "role": "user",
+            "content": "Hello, can you tell me the weather in San Francisco?",
+        },
+    ]
+
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get the current weather in a given location",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "The city and state, e.g. San Francisco, CA",
+                        }
+                    },
+                    "required": ["location"],
+                },
+            },
+        }
+    ]
+
+    data = {
+        "model": model,
+        "messages": messages,
+        "tools": tools,
+        "top_p": 0.5,
+    }
+
+    mock_response = AsyncMock()
+
+    def return_val():
+        return {
+            "id": "chat-3d11cf95eb224966937b216d9494fe73",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": " Sure, let me check that for you.",
+                        "tool_calls": [
+                            {
+                                "id": "b5cef16b-5946-4937-b9d5-beeaea871e77",
+                                "type": "function",
+                                "function": {
+                                    "name": "get_weather",
+                                    "arguments": '{"location": "San Francisco"}',
+                                },
+                            }
+                        ],
+                    },
+                    "finish_reason": "stop",
+                }
+            ],
+            "usage": {
+                "prompt_tokens": 158,
+                "completion_tokens": 36,
+                "total_tokens": 194,
+            },
+            "meta": {"requestDurationMillis": 501},
+            "model": "jamba-1.5",
+        }
+
+    mock_response.json = return_val
+    mock_response.status_code = 200
+
+    with patch(
+        "litellm.llms.custom_httpx.http_handler.AsyncHTTPHandler.post",
+        return_value=mock_response,
+    ) as mock_post:
+        response = await litellm.acompletion(**data)
+
+        # Assert
+        mock_post.assert_called_once()
+        url, kwargs = mock_post.call_args
+        print("url = ", url)
+        print("call args = ", kwargs)
+
+        print(kwargs["data"])
+
+        assert (
+            url[0]
+            == "https://us-central1-aiplatform.googleapis.com/v1beta1/projects/adroit-crow-413218/locations/us-central1/publishers/ai21/models/jamba-1.5-mini@001:rawPredict"
+        )
+
+        # json loads kwargs
+        kwargs["data"] = json.loads(kwargs["data"])
+
+        assert kwargs["data"] == {
+            "model": "jamba-1.5-mini",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "Your name is Litellm Bot, you are a helpful assistant",
+                },
+                {
+                    "role": "user",
+                    "content": "Hello, can you tell me the weather in San Francisco?",
+                },
+            ],
+            "top_p": 0.5,
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "get_weather",
+                        "description": "Get the current weather in a given location",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "location": {
+                                    "type": "string",
+                                    "description": "The city and state, e.g. San Francisco, CA",
+                                }
+                            },
+                            "required": ["location"],
+                        },
+                    },
+                }
+            ],
+            "stream": False,
+        }
+
+        assert response.id == "chat-3d11cf95eb224966937b216d9494fe73"
+        assert len(response.choices) == 1
+        assert (
+            response.choices[0].message.content == " Sure, let me check that for you."
+        )
+        assert response.choices[0].message.tool_calls[0].function.name == "get_weather"
+        assert (
+            response.choices[0].message.tool_calls[0].function.arguments
+            == '{"location": "San Francisco"}'
+        )
+        assert response.usage.prompt_tokens == 158
+        assert response.usage.completion_tokens == 36
+        assert response.usage.total_tokens == 194
+
+        print(f"response: {response}")
