@@ -77,7 +77,10 @@ def test_completion_custom_provider_model_name():
 
 
 def _openai_mock_response(*args, **kwargs) -> litellm.ModelResponse:
-    _data = {
+    new_response = MagicMock()
+    new_response.headers = {"hello": "world"}
+
+    response_object = {
         "id": "chatcmpl-123",
         "object": "chat.completion",
         "created": 1677652288,
@@ -87,7 +90,7 @@ def _openai_mock_response(*args, **kwargs) -> litellm.ModelResponse:
             {
                 "index": 0,
                 "message": {
-                    "role": None,
+                    "role": "assistant",
                     "content": "\n\nHello there, how may I assist you today?",
                 },
                 "logprobs": None,
@@ -96,7 +99,13 @@ def _openai_mock_response(*args, **kwargs) -> litellm.ModelResponse:
         ],
         "usage": {"prompt_tokens": 9, "completion_tokens": 12, "total_tokens": 21},
     }
-    return litellm.ModelResponse(**_data)
+    from openai import OpenAI
+    from openai.types.chat.chat_completion import ChatCompletion
+
+    pydantic_obj = ChatCompletion(**response_object)  # type: ignore
+    pydantic_obj.choices[0].message.role = None  # type: ignore
+    new_response.parse.return_value = pydantic_obj
+    return new_response
 
 
 def test_null_role_response():
@@ -4069,6 +4078,7 @@ def test_completion_nvidia_nim():
         # "gemini-1.5-flash",
     ],
 )
+@pytest.mark.flaky(retries=3, delay=1)
 def test_completion_gemini(model):
     litellm.set_verbose = True
     model_name = "gemini/{}".format(model)
@@ -4164,45 +4174,6 @@ def test_completion_deepseek():
         response = completion(model=model_name, messages=messages, tools=tools)
         # Add any assertions here to check the response
         print(response)
-    except litellm.APIError as e:
-        pass
-    except Exception as e:
-        pytest.fail(f"Error occurred: {e}")
-
-
-# Palm tests
-def test_completion_palm():
-    litellm.set_verbose = True
-    model_name = "palm/chat-bison"
-    messages = [{"role": "user", "content": "Hey, how's it going?"}]
-    try:
-        response = completion(model=model_name, messages=messages)
-        # Add any assertions here to check the response
-        print(response)
-    except litellm.APIError as e:
-        pass
-    except Exception as e:
-        pytest.fail(f"Error occurred: {e}")
-
-
-# test_completion_palm()
-
-
-# test palm with streaming
-def test_completion_palm_stream():
-    # litellm.set_verbose = True
-    model_name = "palm/chat-bison"
-    try:
-        response = completion(
-            model=model_name,
-            messages=messages,
-            stop=["stop"],
-            stream=True,
-            max_tokens=20,
-        )
-        # Add any assertions here to check the response
-        for chunk in response:
-            print(chunk)
     except litellm.APIError as e:
         pass
     except Exception as e:

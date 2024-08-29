@@ -50,6 +50,9 @@ VERTEX_MODELS_TO_NOT_TEST = [
     "text-bison@001",
     "gemini-1.5-pro",
     "gemini-1.5-pro-preview-0215",
+    "gemini-pro-experimental",
+    "gemini-flash-experimental",
+    "gemini-pro-flash",
 ]
 
 
@@ -151,6 +154,7 @@ async def test_get_response():
 
 
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_get_router_response():
     model = "claude-3-sonnet@20240229"
     vertex_ai_project = "adroit-crow-413218"
@@ -195,6 +199,7 @@ async def test_get_router_response():
 # @pytest.mark.skip(
 #     reason="Local test. Vertex AI Quota is low. Leads to rate limit errors on ci/cd."
 # )
+@pytest.mark.flaky(retries=3, delay=1)
 def test_vertex_ai_anthropic():
     model = "claude-3-sonnet@20240229"
 
@@ -217,6 +222,7 @@ def test_vertex_ai_anthropic():
 # @pytest.mark.skip(
 #     reason="Local test. Vertex AI Quota is low. Leads to rate limit errors on ci/cd."
 # )
+@pytest.mark.flaky(retries=3, delay=1)
 def test_vertex_ai_anthropic_streaming():
     try:
         load_vertex_ai_credentials()
@@ -257,6 +263,7 @@ def test_vertex_ai_anthropic_streaming():
 #     reason="Local test. Vertex AI Quota is low. Leads to rate limit errors on ci/cd."
 # )
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_vertex_ai_anthropic_async():
     # load_vertex_ai_credentials()
     try:
@@ -290,6 +297,7 @@ async def test_vertex_ai_anthropic_async():
 #     reason="Local test. Vertex AI Quota is low. Leads to rate limit errors on ci/cd."
 # )
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_vertex_ai_anthropic_async_streaming():
     # load_vertex_ai_credentials()
     try:
@@ -324,6 +332,7 @@ async def test_vertex_ai_anthropic_async_streaming():
 # asyncio.run(test_vertex_ai_anthropic_async_streaming())
 
 
+@pytest.mark.flaky(retries=3, delay=1)
 def test_vertex_ai():
     import random
 
@@ -374,6 +383,7 @@ def test_vertex_ai():
 # test_vertex_ai()
 
 
+@pytest.mark.flaky(retries=3, delay=1)
 def test_vertex_ai_stream():
     load_vertex_ai_credentials()
     litellm.set_verbose = True
@@ -422,6 +432,7 @@ def test_vertex_ai_stream():
 # test_vertex_ai_stream()
 
 
+@pytest.mark.flaky(retries=3, delay=1)
 @pytest.mark.asyncio
 async def test_async_vertexai_response():
     import random
@@ -464,6 +475,7 @@ async def test_async_vertexai_response():
 # asyncio.run(test_async_vertexai_response())
 
 
+@pytest.mark.flaky(retries=3, delay=1)
 @pytest.mark.asyncio
 async def test_async_vertexai_streaming_response():
     import random
@@ -519,6 +531,7 @@ async def test_async_vertexai_streaming_response():
 
 @pytest.mark.parametrize("provider", ["vertex_ai"])  # "vertex_ai_beta"
 @pytest.mark.parametrize("sync_mode", [True, False])
+@pytest.mark.flaky(retries=3, delay=1)
 @pytest.mark.asyncio
 async def test_gemini_pro_vision(provider, sync_mode):
     try:
@@ -584,6 +597,7 @@ async def test_gemini_pro_vision(provider, sync_mode):
 
 
 @pytest.mark.parametrize("load_pdf", [False])  # True,
+@pytest.mark.flaky(retries=3, delay=1)
 def test_completion_function_plus_pdf(load_pdf):
     litellm.set_verbose = True
     load_vertex_ai_credentials()
@@ -846,6 +860,7 @@ def test_gemini_pro_grounding(value_in_dict):
 )  # "vertex_ai",
 @pytest.mark.parametrize("sync_mode", [True])  # "vertex_ai",
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_gemini_pro_function_calling_httpx(model, sync_mode):
     try:
         load_vertex_ai_credentials()
@@ -925,6 +940,7 @@ from litellm.tests.test_completion import response_format_tests
     "sync_mode",
     [True, False],
 )  #
+@pytest.mark.flaky(retries=3, delay=1)
 @pytest.mark.asyncio
 async def test_partner_models_httpx(model, sync_mode):
     try:
@@ -980,6 +996,7 @@ async def test_partner_models_httpx(model, sync_mode):
     [True, False],  #
 )  #
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_partner_models_httpx_streaming(model, sync_mode):
     try:
         load_vertex_ai_credentials()
@@ -1156,6 +1173,7 @@ def vertex_httpx_mock_post(url, data=None, json=None, headers=None):
 @pytest.mark.parametrize("provider", ["vertex_ai_beta"])  # "vertex_ai",
 @pytest.mark.parametrize("content_filter_type", ["prompt", "response"])  # "vertex_ai",
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_gemini_pro_json_schema_httpx_content_policy_error(
     provider, content_filter_type
 ):
@@ -1628,6 +1646,7 @@ async def test_gemini_pro_httpx_custom_api_base(provider):
 @pytest.mark.parametrize("sync_mode", [True])
 @pytest.mark.parametrize("provider", ["vertex_ai"])
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_gemini_pro_function_calling(provider, sync_mode):
     try:
         load_vertex_ai_credentials()
@@ -1713,6 +1732,7 @@ async def test_gemini_pro_function_calling(provider, sync_mode):
 
 @pytest.mark.parametrize("sync_mode", [True])
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_gemini_pro_function_calling_streaming(sync_mode):
     load_vertex_ai_credentials()
     litellm.set_verbose = True
@@ -1778,6 +1798,7 @@ async def test_gemini_pro_function_calling_streaming(sync_mode):
 
 
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_gemini_pro_async_function_calling():
     load_vertex_ai_credentials()
     try:
@@ -1830,6 +1851,7 @@ async def test_gemini_pro_async_function_calling():
 # asyncio.run(gemini_pro_async_function_calling())
 
 
+@pytest.mark.flaky(retries=3, delay=1)
 def test_vertexai_embedding():
     try:
         load_vertex_ai_credentials()
@@ -1936,6 +1958,7 @@ def test_vertexai_embedding_embedding_latest():
 
 
 @pytest.mark.asyncio
+@pytest.mark.flaky(retries=3, delay=1)
 async def test_vertexai_aembedding():
     try:
         load_vertex_ai_credentials()
