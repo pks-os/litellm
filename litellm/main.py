@@ -120,20 +120,28 @@ from .llms.prompt_templates.factory import (
 )
 from .llms.sagemaker.sagemaker import SagemakerLLM
 from .llms.text_completion_codestral import CodestralTextCompletion
-from .llms.text_to_speech.vertex_ai import VertexTextToSpeechAPI
 from .llms.triton import TritonChatCompletion
 from .llms.vertex_ai_and_google_ai_studio import (
     vertex_ai_anthropic,
     vertex_ai_non_gemini,
 )
-from .llms.vertex_ai_and_google_ai_studio.embeddings.batch_embed_content_handler import (
-    GoogleBatchEmbeddings,
-)
 from .llms.vertex_ai_and_google_ai_studio.gemini.vertex_and_google_ai_studio_gemini import (
     VertexLLM,
 )
+from .llms.vertex_ai_and_google_ai_studio.gemini_embeddings.batch_embed_content_handler import (
+    GoogleBatchEmbeddings,
+)
+from .llms.vertex_ai_and_google_ai_studio.multimodal_embeddings.embedding_handler import (
+    VertexMultimodalEmbedding,
+)
+from .llms.vertex_ai_and_google_ai_studio.text_to_speech.text_to_speech_handler import (
+    VertexTextToSpeechAPI,
+)
 from .llms.vertex_ai_and_google_ai_studio.vertex_ai_partner_models.main import (
     VertexAIPartnerModels,
+)
+from .llms.vertex_ai_and_google_ai_studio.vertex_embeddings import (
+    embedding_handler as vertex_ai_embedding_handler,
 )
 from .llms.watsonx import IBMWatsonXAI
 from .types.llms.openai import HttpxBinaryResponseContent
@@ -175,6 +183,7 @@ triton_chat_completions = TritonChatCompletion()
 bedrock_chat_completion = BedrockLLM()
 bedrock_converse_chat_completion = BedrockConverseLLM()
 vertex_chat_completion = VertexLLM()
+vertex_multimodal_embedding = VertexMultimodalEmbedding()
 google_batch_embeddings = GoogleBatchEmbeddings()
 vertex_partner_models_chat_completion = VertexAIPartnerModels()
 vertex_text_to_speech = VertexTextToSpeechAPI()
@@ -2361,6 +2370,7 @@ def completion(
                     timeout=timeout,
                     acompletion=acompletion,
                     client=client,
+                    api_base=api_base,
                 )
             else:
                 response = bedrock_chat_completion.completion(
@@ -2378,6 +2388,7 @@ def completion(
                     timeout=timeout,
                     acompletion=acompletion,
                     client=client,
+                    api_base=api_base,
                 )
 
             if optional_params.get("stream", False):
@@ -3581,10 +3592,11 @@ def embedding(
             if (
                 "image" in optional_params
                 or "video" in optional_params
-                or model in vertex_chat_completion.SUPPORTED_MULTIMODAL_EMBEDDING_MODELS
+                or model
+                in vertex_multimodal_embedding.SUPPORTED_MULTIMODAL_EMBEDDING_MODELS
             ):
                 # multimodal embedding is supported on vertex httpx
-                response = vertex_chat_completion.multimodal_embedding(
+                response = vertex_multimodal_embedding.multimodal_embedding(
                     model=model,
                     input=input,
                     encoding=encoding,
@@ -3599,7 +3611,7 @@ def embedding(
                     custom_llm_provider="vertex_ai",
                 )
             else:
-                response = vertex_ai_non_gemini.embedding(
+                response = vertex_ai_embedding_handler.embedding(
                     model=model,
                     input=input,
                     encoding=encoding,
