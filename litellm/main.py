@@ -77,13 +77,10 @@ from .caching import disable_cache, enable_cache, update_cache
 from .llms import (
     ai21,
     aleph_alpha,
-    anthropic_text,
     baseten,
     bedrock,
     clarifai,
     cloudflare,
-    gemini,
-    huggingface_restapi,
     maritalk,
     nlp_cloud,
     ollama,
@@ -93,13 +90,10 @@ from .llms import (
     palm,
     petals,
     replicate,
-    together_ai,
-    triton,
     vllm,
-    watsonx,
 )
-from .llms.anthropic import AnthropicChatCompletion
-from .llms.anthropic_text import AnthropicTextCompletion
+from .llms.anthropic.chat import AnthropicChatCompletion
+from .llms.anthropic.completion import AnthropicTextCompletion
 from .llms.azure import AzureChatCompletion, _check_dynamic_azure_params
 from .llms.azure_text import AzureTextCompletion
 from .llms.bedrock_httpx import BedrockConverseLLM, BedrockLLM
@@ -390,6 +384,7 @@ async def acompletion(
             or custom_llm_provider == "perplexity"
             or custom_llm_provider == "groq"
             or custom_llm_provider == "nvidia_nim"
+            or custom_llm_provider == "cerebras"
             or custom_llm_provider == "volcengine"
             or custom_llm_provider == "codestral"
             or custom_llm_provider == "text-completion-codestral"
@@ -1295,6 +1290,7 @@ def completion(
             or custom_llm_provider == "perplexity"
             or custom_llm_provider == "groq"
             or custom_llm_provider == "nvidia_nim"
+            or custom_llm_provider == "cerebras"
             or custom_llm_provider == "volcengine"
             or custom_llm_provider == "codestral"
             or custom_llm_provider == "deepseek"
@@ -3144,6 +3140,7 @@ async def aembedding(*args, **kwargs) -> EmbeddingResponse:
             or custom_llm_provider == "perplexity"
             or custom_llm_provider == "groq"
             or custom_llm_provider == "nvidia_nim"
+            or custom_llm_provider == "cerebras"
             or custom_llm_provider == "volcengine"
             or custom_llm_provider == "deepseek"
             or custom_llm_provider == "fireworks_ai"
@@ -3795,6 +3792,7 @@ async def atext_completion(
             or custom_llm_provider == "perplexity"
             or custom_llm_provider == "groq"
             or custom_llm_provider == "nvidia_nim"
+            or custom_llm_provider == "cerebras"
             or custom_llm_provider == "volcengine"
             or custom_llm_provider == "text-completion-codestral"
             or custom_llm_provider == "deepseek"

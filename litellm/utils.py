@@ -2550,6 +2550,7 @@ def get_optional_params_embeddings(
     encoding_format=None,
     dimensions=None,
     custom_llm_provider="",
+    drop_params: Optional[bool] = None,
     additional_drop_params: Optional[bool] = None,
     **kwargs,
 ):
@@ -2560,6 +2561,7 @@ def get_optional_params_embeddings(
     for k, v in special_params.items():
         passed_params[k] = v
 
+    drop_params = passed_params.pop("drop_params", None)
     additional_drop_params = passed_params.pop("additional_drop_params", None)
 
     default_params = {"user": None, "encoding_format": None, "dimensions": None}
@@ -2571,11 +2573,16 @@ def get_optional_params_embeddings(
         for k in non_default_params.keys():
             if k not in supported_params:
                 unsupported_params[k] = non_default_params[k]
-        if unsupported_params and not litellm.drop_params:
-            raise UnsupportedParamsError(
-                status_code=500,
-                message=f"{custom_llm_provider} does not support parameters: {unsupported_params}, for model={model}. To drop these, set `litellm.drop_params=True` or for proxy:\n\n`litellm_settings:\n drop_params: true`\n",
-            )
+        if unsupported_params:
+            if litellm.drop_params is True or (
+                drop_params is not None and drop_params is True
+            ):
+                pass
+            else:
+                raise UnsupportedParamsError(
+                    status_code=500,
+                    message=f"{custom_llm_provider} does not support parameters: {unsupported_params}, for model={model}. To drop these, set `litellm.drop_params=True` or for proxy:\n\n`litellm_settings:\n drop_params: true`\n",
+                )
 
     non_default_params = _get_non_default_params(
         passed_params=passed_params,
@@ -2680,7 +2687,9 @@ def get_optional_params_embeddings(
         and custom_llm_provider not in litellm.openai_compatible_providers
     ):
         if len(non_default_params.keys()) > 0:
-            if litellm.drop_params is True:  # drop the unsupported non-default values
+            if (
+                litellm.drop_params is True or drop_params is True
+            ):  # drop the unsupported non-default values
                 keys = list(non_default_params.keys())
                 for k in keys:
                     non_default_params.pop(k, None)
@@ -2854,6 +2863,7 @@ def get_optional_params(
             and custom_llm_provider != "together_ai"
             and custom_llm_provider != "groq"
             and custom_llm_provider != "nvidia_nim"
+            and custom_llm_provider != "cerebras"
             and custom_llm_provider != "volcengine"
             and custom_llm_provider != "deepseek"
             and custom_llm_provider != "codestral"
@@ -3613,6 +3623,16 @@ def get_optional_params(
             non_default_params=non_default_params,
             optional_params=optional_params,
         )
+    elif custom_llm_provider == "cerebras":
+        supported_params = get_supported_openai_params(
+            model=model, custom_llm_provider=custom_llm_provider
+        )
+        _check_valid_arg(supported_params=supported_params)
+        optional_params = litellm.CerebrasConfig().map_openai_params(
+            non_default_params=non_default_params,
+            optional_params=optional_params,
+            model=model,
+        )
     elif custom_llm_provider == "fireworks_ai":
         supported_params = get_supported_openai_params(
             model=model, custom_llm_provider=custom_llm_provider
@@ -4238,6 +4258,8 @@ def get_supported_openai_params(
         return litellm.FireworksAIConfig().get_supported_openai_params()
     elif custom_llm_provider == "nvidia_nim":
         return litellm.NvidiaNimConfig().get_supported_openai_params(model=model)
+    elif custom_llm_provider == "cerebras":
+        return litellm.CerebrasConfig().get_supported_openai_params(model=model)
     elif custom_llm_provider == "volcengine":
         return litellm.VolcEngineConfig().get_supported_openai_params(model=model)
     elif custom_llm_provider == "groq":
@@ -4665,6 +4687,13 @@ def get_llm_provider(
                     or "https://integrate.api.nvidia.com/v1"
                 )  # type: ignore
                 dynamic_api_key = api_key or get_secret("NVIDIA_NIM_API_KEY")
+            elif custom_llm_provider == "cerebras":
+                api_base = (
+                    api_base
+                    or get_secret("CEREBRAS_API_BASE")
+                    or "https://api.cerebras.ai/v1"
+                )  # type: ignore
+                dynamic_api_key = api_key or get_secret("CEREBRAS_API_KEY")
             elif custom_llm_provider == "volcengine":
                 # volcengine is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.endpoints.anyscale.com/v1
                 api_base = (
@@ -4815,6 +4844,9 @@ def get_llm_provider(
                     elif endpoint == "https://integrate.api.nvidia.com/v1":
                         custom_llm_provider = "nvidia_nim"
                         dynamic_api_key = get_secret("NVIDIA_NIM_API_KEY")
+                    elif endpoint == "https://api.cerebras.ai/v1":
+                        custom_llm_provider = "cerebras"
+                        dynamic_api_key = get_secret("CEREBRAS_API_KEY")
                     elif endpoint == "https://codestral.mistral.ai/v1":
                         custom_llm_provider = "codestral"
                         dynamic_api_key = get_secret("CODESTRAL_API_KEY")
@@ -5335,6 +5367,12 @@ def get_model_info(model: str, custom_llm_provider: Optional[str] = None) -> Mod
                 max_input_tokens=_model_info.get("max_input_tokens", None),
                 max_output_tokens=_model_info.get("max_output_tokens", None),
                 input_cost_per_token=_input_cost_per_token,
+                cache_creation_input_token_cost=_model_info.get(
+                    "cache_creation_input_token_cost", None
+                ),
+                cache_read_input_token_cost=_model_info.get(
+                    "cache_read_input_token_cost", None
+                ),
                 input_cost_per_character=_model_info.get(
                     "input_cost_per_character", None
                 ),
@@ -5734,6 +5772,11 @@ def validate_environment(
                 keys_in_environment = True
             else:
                 missing_keys.append("NVIDIA_NIM_API_KEY")
+        elif custom_llm_provider == "cerebras":
+            if "CEREBRAS_API_KEY" in os.environ:
+                keys_in_environment = True
+            else:
+                missing_keys.append("CEREBRAS_API_KEY")
         elif custom_llm_provider == "volcengine":
             if "VOLCENGINE_API_KEY" in os.environ:
                 keys_in_environment = True
