@@ -140,6 +140,7 @@ return_response_headers: bool = (
 enable_json_schema_validation: bool = False
 ##################
 logging: bool = True
+enable_loadbalancing_on_batch_endpoints: Optional[bool] = None
 enable_caching_on_provider_specific_optional_params: bool = (
     False  # feature-flag for caching on optional params - e.g. 'top_k'
 )
@@ -356,6 +357,7 @@ vertex_language_models: List = []
 vertex_vision_models: List = []
 vertex_chat_models: List = []
 vertex_code_chat_models: List = []
+vertex_ai_image_models: List = []
 vertex_text_models: List = []
 vertex_code_text_models: List = []
 vertex_embedding_models: List = []
@@ -416,6 +418,9 @@ for key, value in model_cost.items():
     elif value.get("litellm_provider") == "vertex_ai-ai21_models":
         key = key.replace("vertex_ai/", "")
         vertex_ai_ai21_models.append(key)
+    elif value.get("litellm_provider") == "vertex_ai-image-models":
+        key = key.replace("vertex_ai/", "")
+        vertex_ai_image_models.append(key)
     elif value.get("litellm_provider") == "ai21":
         if value.get("mode") == "chat":
             ai21_chat_models.append(key)
@@ -829,7 +834,6 @@ from .utils import (
     decode,
     _calculate_retry_after,
     _should_retry,
-    get_secret,
     get_supported_openai_params,
     get_api_base,
     get_first_chars_messages,
