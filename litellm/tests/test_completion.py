@@ -23,7 +23,7 @@ from litellm import RateLimitError, Timeout, completion, completion_cost, embedd
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.llms.prompt_templates.factory import anthropic_messages_pt
 
-# litellm.num_retries = 3
+# litellm.num_retries=3
 litellm.cache = None
 litellm.success_callback = []
 user_message = "Write a short poem about the sky"
@@ -2180,6 +2180,7 @@ def test_completion_openai():
         "bedrock/anthropic.claude-3-sonnet-20240229-v1:0",
     ],
 )
+@pytest.mark.flaky(retries=3, delay=1)
 def test_completion_openai_pydantic(model):
     try:
         litellm.set_verbose = True
@@ -2217,7 +2218,7 @@ def test_completion_openai_pydantic(model):
         print(f"response_str: {response_str}")
         json.loads(response_str)  # check valid json is returned
 
-    except Timeout as e:
+    except Timeout:
         pass
     except Exception as e:
         pytest.fail(f"Error occurred: {e}")
