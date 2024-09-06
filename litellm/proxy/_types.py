@@ -244,6 +244,13 @@ class LiteLLMRoutes(enum.Enum):
         "/utils/token_counter",
     ]
 
+    mapped_pass_through_routes: List = [
+        "/bedrock",
+        "/vertex-ai",
+        "/gemini",
+        "/langfuse",
+    ]
+
     anthropic_routes: List = [
         "/v1/messages",
     ]
@@ -337,6 +344,13 @@ class LiteLLMRoutes(enum.Enum):
             "/key/update",
             "/key/delete",
             "/key/info",
+            "/global/spend/tags",
+            "/global/spend/keys",
+            "/global/spend/models",
+            "/global/spend/provider",
+            "/global/spend/end_users",
+            "/global/activity",
+            "/global/activity/model",
         ]
         + spend_tracking_routes
         + sso_only_routes
