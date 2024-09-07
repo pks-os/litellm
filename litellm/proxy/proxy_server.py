@@ -1645,6 +1645,14 @@ class ProxyConfig:
                     verbose_proxy_logger.debug(
                         f"litellm.post_call_rules: {litellm.post_call_rules}"
                     )
+                elif key == "max_internal_user_budget":
+                    litellm.max_internal_user_budget = float(value)  # type: ignore
+                elif key == "default_max_internal_user_budget":
+                    litellm.default_max_internal_user_budget = float(value)
+                    if litellm.max_internal_user_budget is None:
+                        litellm.max_internal_user_budget = (
+                            litellm.default_max_internal_user_budget
+                        )
                 elif key == "custom_provider_map":
                     from litellm.utils import custom_llm_setup
 
@@ -2997,13 +3005,13 @@ def model_list(
 
     This is just for compatibility with openai projects like aider.
     """
-    global llm_model_list, general_settings
+    global llm_model_list, general_settings, llm_router
     all_models = []
     ## CHECK IF MODEL RESTRICTIONS ARE SET AT KEY/TEAM LEVEL ##
-    if llm_model_list is None:
+    if llm_router is None:
         proxy_model_list = []
     else:
-        proxy_model_list = [m["model_name"] for m in llm_model_list]
+        proxy_model_list = llm_router.get_model_names()
     key_models = get_key_models(
         user_api_key_dict=user_api_key_dict, proxy_model_list=proxy_model_list
     )
@@ -7495,10 +7503,11 @@ async def model_info_v1(
 
     all_models: List[dict] = []
     ## CHECK IF MODEL RESTRICTIONS ARE SET AT KEY/TEAM LEVEL ##
-    if llm_model_list is None:
+    if llm_router is None:
         proxy_model_list = []
     else:
-        proxy_model_list = [m["model_name"] for m in llm_model_list]
+        proxy_model_list = llm_router.get_model_names()
+
     key_models = get_key_models(
         user_api_key_dict=user_api_key_dict, proxy_model_list=proxy_model_list
     )
@@ -7515,8 +7524,14 @@ async def model_info_v1(
 
     if len(all_models_str) > 0:
         model_names = all_models_str
-        _relevant_models = [m for m in llm_model_list if m["model_name"] in model_names]
-        all_models = copy.deepcopy(_relevant_models)
+        llm_model_list = llm_router.get_model_list()
+        if llm_model_list is not None:
+            _relevant_models = [
+                m for m in llm_model_list if m["model_name"] in model_names
+            ]
+            all_models = copy.deepcopy(_relevant_models)  # type: ignore
+        else:
+            all_models = []
 
     for model in all_models:
         # provided model_info in config.yaml
@@ -7582,12 +7597,12 @@ async def model_group_info(
         raise HTTPException(
             status_code=500, detail={"error": "LLM Router is not loaded in"}
         )
-    all_models: List[dict] = []
     ## CHECK IF MODEL RESTRICTIONS ARE SET AT KEY/TEAM LEVEL ##
-    if llm_model_list is None:
+    if llm_router is None:
         proxy_model_list = []
     else:
-        proxy_model_list = [m["model_name"] for m in llm_model_list]
+        proxy_model_list = llm_router.get_model_names()
+
     key_models = get_key_models(
         user_api_key_dict=user_api_key_dict, proxy_model_list=proxy_model_list
     )
