@@ -28,6 +28,7 @@ from litellm.cost_calculator import _select_model_name_for_cost_calc
 from litellm.integrations.custom_guardrail import CustomGuardrail
 from litellm.integrations.custom_logger import CustomLogger
 from litellm.litellm_core_utils.redact_messages import (
+    redact_message_input_output_from_custom_logger,
     redact_message_input_output_from_logging,
 )
 from litellm.rerank_api.types import RerankResponse
@@ -1395,6 +1396,9 @@ class Logging:
                     call_type=self.call_type,
                 )
             elif isinstance(callback, CustomLogger):
+                result = redact_message_input_output_from_custom_logger(
+                    result=result, litellm_logging_obj=self, custom_logger=callback
+                )
                 self.model_call_details, result = await callback.async_logging_hook(
                     kwargs=self.model_call_details,
                     result=result,
@@ -2329,6 +2333,8 @@ def get_standard_logging_object_payload(
             completion_start_time_float = completion_start_time.timestamp()
         elif isinstance(completion_start_time, float):
             completion_start_time_float = completion_start_time
+        else:
+            completion_start_time_float = end_time_float
         # clean up litellm hidden params
         clean_hidden_params = StandardLoggingHiddenParams(
             model_id=None,

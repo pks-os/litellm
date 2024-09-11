@@ -9,7 +9,17 @@ import types
 import uuid
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import httpx  # type: ignore
 import requests  # type: ignore
@@ -19,7 +29,11 @@ import litellm.litellm_core_utils
 import litellm.litellm_core_utils.litellm_logging
 from litellm import verbose_logger
 from litellm.litellm_core_utils.core_helpers import map_finish_reason
-from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
+from litellm.llms.custom_httpx.http_handler import (
+    AsyncHTTPHandler,
+    HTTPHandler,
+    get_async_httpx_client,
+)
 from litellm.llms.prompt_templates.factory import (
     convert_url_to_base64,
     response_schema_prompt,
@@ -63,6 +77,11 @@ from .transformation import (
     set_headers,
     sync_transform_request_body,
 )
+
+if TYPE_CHECKING:
+    from google.auth.credentials import Credentials as GoogleCredentialsObject
+else:
+    GoogleCredentialsObject = Any
 
 
 class VertexAIConfig:
@@ -807,7 +826,7 @@ class VertexLLM(BaseLLM):
         super().__init__()
         self.access_token: Optional[str] = None
         self.refresh_token: Optional[str] = None
-        self._credentials: Optional[Any] = None
+        self._credentials: Optional[GoogleCredentialsObject] = None
         self.project_id: Optional[str] = None
         self.async_handler: Optional[AsyncHTTPHandler] = None
 
@@ -1135,10 +1154,11 @@ class VertexLLM(BaseLLM):
             if not self.project_id:
                 self.project_id = project_id or cred_project_id
         else:
-            self.refresh_auth(self._credentials)
+            if self._credentials.expired or not self._credentials.token:
+                self.refresh_auth(self._credentials)
 
             if not self.project_id:
-                self.project_id = self._credentials.project_id
+                self.project_id = self._credentials.quota_project_id
 
         if not self.project_id:
             raise ValueError("Could not resolve project_id")
@@ -1286,13 +1306,13 @@ class VertexLLM(BaseLLM):
     ) -> Union[ModelResponse, CustomStreamWrapper]:
 
         request_body = await async_transform_request_body(**data)  # type: ignore
+        _async_client_params = {}
+        if timeout:
+            _async_client_params["timeout"] = timeout
         if client is None or not isinstance(client, AsyncHTTPHandler):
-            _params = {}
-            if timeout is not None:
-                if isinstance(timeout, float) or isinstance(timeout, int):
-                    timeout = httpx.Timeout(timeout)
-                _params["timeout"] = timeout
-            client = AsyncHTTPHandler(**_params)  # type: ignore
+            client = get_async_httpx_client(
+                params=_async_client_params, llm_provider=litellm.LlmProviders.VERTEX_AI
+            )
         else:
             client = client  # type: ignore
         ## LOGGING
