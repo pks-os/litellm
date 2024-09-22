@@ -256,7 +256,7 @@ def test_generate_and_call_with_valid_key(prisma_client, api_route):
 
             # check /user/info to verify user_role was set correctly
             new_user_info = await user_info(user_id=user_id)
-            new_user_info = new_user_info["user_info"]
+            new_user_info = new_user_info.user_info
             print("new_user_info=", new_user_info)
             assert new_user_info.user_role == LitellmUserRoles.INTERNAL_USER
             assert new_user_info.user_id == user_id
@@ -3220,4 +3220,32 @@ async def test_key_list_unsupported_params(prisma_client):
         print("error str=", str(e.message))
         error_str = str(e.message)
         assert "Unsupported parameter" in error_str
+        pass
+
+
+@pytest.mark.asyncio
+async def test_auth_vertex_ai_route(prisma_client):
+    """
+    If user is premium user and vertex-ai route is used. Assert Virtual Key checks are run
+    """
+    litellm.set_verbose = True
+    setattr(litellm.proxy.proxy_server, "prisma_client", prisma_client)
+    setattr(litellm.proxy.proxy_server, "premium_user", True)
+    setattr(litellm.proxy.proxy_server, "master_key", "sk-1234")
+    await litellm.proxy.proxy_server.prisma_client.connect()
+
+    route = "/vertex-ai/publishers/google/models/gemini-1.5-flash-001:generateContent"
+    request = Request(scope={"type": "http"})
+    request._url = URL(url=route)
+    request._headers = {"Authorization": "Bearer sk-12345"}
+    try:
+        await user_api_key_auth(request=request, api_key="Bearer " + "sk-12345")
+        pytest.fail("Expected this call to fail. User is over limit.")
+    except Exception as e:
+        print(vars(e))
+        print("error str=", str(e.message))
+        error_str = str(e.message)
+        assert e.code == "401"
+        assert "Invalid proxy server token passed" in error_str
+
         pass
