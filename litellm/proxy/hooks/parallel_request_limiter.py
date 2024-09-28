@@ -322,13 +322,18 @@ class _PROXY_MaxParallelRequestsHandler(CustomLogger):
         # check if REQUEST ALLOWED for user_id
         user_id = user_api_key_dict.user_id
         if user_id is not None:
-            _user_id_rate_limits = await self.internal_usage_cache.async_get_cache(
-                key=user_id,
-                litellm_parent_otel_span=user_api_key_dict.parent_otel_span,
+            _user_id_rate_limits = await self.get_internal_user_object(
+                user_id=user_id,
+                user_api_key_dict=user_api_key_dict,
             )
             # get user tpm/rpm limits
-            if _user_id_rate_limits is not None and isinstance(
-                _user_id_rate_limits, dict
+            if (
+                _user_id_rate_limits is not None
+                and isinstance(_user_id_rate_limits, dict)
+                and (
+                    _user_id_rate_limits.get("tpm_limit", None) is not None
+                    or _user_id_rate_limits.get("rpm_limit", None) is not None
+                )
             ):
                 user_tpm_limit = _user_id_rate_limits.get("tpm_limit", None)
                 user_rpm_limit = _user_id_rate_limits.get("rpm_limit", None)
@@ -472,6 +477,8 @@ class _PROXY_MaxParallelRequestsHandler(CustomLogger):
             # Update usage - API Key
             # ------------
 
+            values_to_update_in_cache = []
+
             if user_api_key is not None:
                 request_count_api_key = (
                     f"{user_api_key}::{precise_minute}::request_count"
@@ -495,12 +502,7 @@ class _PROXY_MaxParallelRequestsHandler(CustomLogger):
                 self.print_verbose(
                     f"updated_value in success call: {new_val}, precise_minute: {precise_minute}"
                 )
-                await self.internal_usage_cache.async_set_cache(
-                    request_count_api_key,
-                    new_val,
-                    ttl=60,
-                    litellm_parent_otel_span=litellm_parent_otel_span,
-                )  # store in cache for 1 min.
+                values_to_update_in_cache.append((request_count_api_key, new_val))
 
             # ------------
             # Update usage - model group + API Key
@@ -536,12 +538,7 @@ class _PROXY_MaxParallelRequestsHandler(CustomLogger):
                 self.print_verbose(
                     f"updated_value in success call: {new_val}, precise_minute: {precise_minute}"
                 )
-                await self.internal_usage_cache.async_set_cache(
-                    request_count_api_key,
-                    new_val,
-                    ttl=60,
-                    litellm_parent_otel_span=litellm_parent_otel_span,
-                )
+                values_to_update_in_cache.append((request_count_api_key, new_val))
 
             # ------------
             # Update usage - User
@@ -574,12 +571,7 @@ class _PROXY_MaxParallelRequestsHandler(CustomLogger):
                 self.print_verbose(
                     f"updated_value in success call: {new_val}, precise_minute: {precise_minute}"
                 )
-                await self.internal_usage_cache.async_set_cache(
-                    request_count_api_key,
-                    new_val,
-                    ttl=60,
-                    litellm_parent_otel_span=litellm_parent_otel_span,
-                )  # store in cache for 1 min.
+                values_to_update_in_cache.append((request_count_api_key, new_val))
 
             # ------------
             # Update usage - Team
@@ -612,12 +604,7 @@ class _PROXY_MaxParallelRequestsHandler(CustomLogger):
                 self.print_verbose(
                     f"updated_value in success call: {new_val}, precise_minute: {precise_minute}"
                 )
-                await self.internal_usage_cache.async_set_cache(
-                    request_count_api_key,
-                    new_val,
-                    ttl=60,
-                    litellm_parent_otel_span=litellm_parent_otel_span,
-                )  # store in cache for 1 min.
+                values_to_update_in_cache.append((request_count_api_key, new_val))
 
             # ------------
             # Update usage - End User
@@ -650,13 +637,13 @@ class _PROXY_MaxParallelRequestsHandler(CustomLogger):
                 self.print_verbose(
                     f"updated_value in success call: {new_val}, precise_minute: {precise_minute}"
                 )
-                await self.internal_usage_cache.async_set_cache(
-                    request_count_api_key,
-                    new_val,
-                    ttl=60,
-                    litellm_parent_otel_span=litellm_parent_otel_span,
-                )  # store in cache for 1 min.
+                values_to_update_in_cache.append((request_count_api_key, new_val))
 
+            await self.internal_usage_cache.async_batch_set_cache(
+                cache_list=values_to_update_in_cache,
+                ttl=60,
+                litellm_parent_otel_span=litellm_parent_otel_span,
+            )
         except Exception as e:
             self.print_verbose(e)  # noqa
 
@@ -741,3 +728,39 @@ class _PROXY_MaxParallelRequestsHandler(CustomLogger):
                     str(e)
                 )
             )
+
+    async def get_internal_user_object(
+        self,
+        user_id: str,
+        user_api_key_dict: UserAPIKeyAuth,
+    ) -> Optional[dict]:
+        """
+        Helper to get the 'Internal User Object'
+
+        It uses the `get_user_object` function from `litellm.proxy.auth.auth_checks`
+
+        We need this because the UserApiKeyAuth object does not contain the rpm/tpm limits for a User AND there could be a perf impact by additionally reading the UserTable.
+        """
+        from litellm._logging import verbose_proxy_logger
+        from litellm.proxy.auth.auth_checks import get_user_object
+        from litellm.proxy.proxy_server import prisma_client
+
+        try:
+            _user_id_rate_limits = await get_user_object(
+                user_id=user_id,
+                prisma_client=prisma_client,
+                user_api_key_cache=self.internal_usage_cache.dual_cache,
+                user_id_upsert=False,
+                parent_otel_span=user_api_key_dict.parent_otel_span,
+                proxy_logging_obj=None,
+            )
+
+            if _user_id_rate_limits is None:
+                return None
+
+            return _user_id_rate_limits.model_dump()
+        except Exception as e:
+            verbose_proxy_logger.exception(
+                "Parallel Request Limiter: Error getting user object", str(e)
+            )
+            return None
