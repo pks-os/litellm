@@ -83,6 +83,7 @@ from litellm.types.llms.openai import (
 )
 from litellm.types.utils import FileTypes  # type: ignore
 from litellm.types.utils import (
+    OPENAI_RESPONSE_HEADERS,
     CallTypes,
     ChatCompletionDeltaToolCall,
     Choices,
@@ -1001,6 +1002,10 @@ def client(original_function):
                 result._hidden_params["response_cost"] = (
                     logging_obj._response_cost_calculator(result=result)
                 )
+
+                result._hidden_params["additional_headers"] = process_response_headers(
+                    result._hidden_params.get("additional_headers") or {}
+                )  # GUARANTEE OPENAI HEADERS IN RESPONSE
             result._response_ms = (
                 end_time - start_time
             ).total_seconds() * 1000  # return response latency in ms like openai
@@ -1409,14 +1414,19 @@ def client(original_function):
                 result._hidden_params["response_cost"] = (
                     logging_obj._response_cost_calculator(result=result)
                 )
+                result._hidden_params["additional_headers"] = process_response_headers(
+                    result._hidden_params.get("additional_headers") or {}
+                )  # GUARANTEE OPENAI HEADERS IN RESPONSE
             if (
                 isinstance(result, ModelResponse)
                 or isinstance(result, EmbeddingResponse)
                 or isinstance(result, TranscriptionResponse)
             ):
-                result._response_ms = (
-                    end_time - start_time
-                ).total_seconds() * 1000  # return response latency in ms like openai
+                setattr(
+                    result,
+                    "_response_ms",
+                    (end_time - start_time).total_seconds() * 1000,
+                )  # return response latency in ms like openai
 
             ### POST-CALL RULES ###
             post_call_processing(
@@ -5760,13 +5770,35 @@ def convert_to_model_response_object(
     received_args = locals()
 
     if _response_headers is not None:
+        openai_headers = {}
+        if "x-ratelimit-limit-requests" in _response_headers:
+            openai_headers["x-ratelimit-limit-requests"] = _response_headers[
+                "x-ratelimit-limit-requests"
+            ]
+        if "x-ratelimit-remaining-requests" in _response_headers:
+            openai_headers["x-ratelimit-remaining-requests"] = _response_headers[
+                "x-ratelimit-remaining-requests"
+            ]
+        if "x-ratelimit-limit-tokens" in _response_headers:
+            openai_headers["x-ratelimit-limit-tokens"] = _response_headers[
+                "x-ratelimit-limit-tokens"
+            ]
+        if "x-ratelimit-remaining-tokens" in _response_headers:
+            openai_headers["x-ratelimit-remaining-tokens"] = _response_headers[
+                "x-ratelimit-remaining-tokens"
+            ]
         llm_response_headers = {
             "{}-{}".format("llm_provider", k): v for k, v in _response_headers.items()
         }
         if hidden_params is not None:
-            hidden_params["additional_headers"] = llm_response_headers
+            hidden_params["additional_headers"] = {
+                **llm_response_headers,
+                **openai_headers,
+            }
         else:
-            hidden_params = {"additional_headers": llm_response_headers}
+            hidden_params = {
+                "additional_headers": {**llm_response_headers, **openai_headers}
+            }
     ### CHECK IF ERROR IN RESPONSE ### - openrouter returns these in the dictionary
     if (
         response_object is not None
@@ -5879,7 +5911,9 @@ def convert_to_model_response_object(
                     ).total_seconds() * 1000
 
             if hidden_params is not None:
-                model_response_object._hidden_params = hidden_params
+                if model_response_object._hidden_params is None:
+                    model_response_object._hidden_params = {}
+                model_response_object._hidden_params.update(hidden_params)
 
             if _response_headers is not None:
                 model_response_object._response_headers = _response_headers
@@ -6370,11 +6404,11 @@ class CustomStreamWrapper:
         self._hidden_params = {
             "model_id": (_model_info.get("id", None)),
         }  # returned as x-litellm-model-id response header in proxy
-        if _response_headers is not None:
-            self._hidden_params["additional_headers"] = {
-                "{}-{}".format("llm_provider", k): v
-                for k, v in _response_headers.items()
-            }
+
+        self._hidden_params["additional_headers"] = process_response_headers(
+            _response_headers or {}
+        )  # GUARANTEE OPENAI HEADERS IN RESPONSE
+
         self._response_headers = _response_headers
         self.response_id = None
         self.logging_loop = None
@@ -9225,3 +9259,30 @@ def has_tool_call_blocks(messages: List[AllMessageValues]) -> bool:
         if message.get("tool_calls") is not None:
             return True
     return False
+
+
+def process_response_headers(response_headers: Union[httpx.Headers, dict]) -> dict:
+    openai_headers = {}
+    processed_headers = {}
+    additional_headers = {}
+
+    for k, v in response_headers.items():
+        if k in OPENAI_RESPONSE_HEADERS:  # return openai-compatible headers
+            openai_headers[k] = v
+        if k.startswith(
+            "llm_provider-"
+        ):  # return raw provider headers (incl. openai-compatible ones)
+            processed_headers[k] = v
+        else:
+            additional_headers["{}-{}".format("llm_provider", k)] = v
+    ## GUARANTEE OPENAI HEADERS IN RESPONSE
+    for item in OPENAI_RESPONSE_HEADERS:
+        if item not in openai_headers:
+            openai_headers[item] = None
+
+    additional_headers = {
+        **openai_headers,
+        **processed_headers,
+        **additional_headers,
+    }
+    return additional_headers
