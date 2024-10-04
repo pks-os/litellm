@@ -135,6 +135,7 @@ class AzureOpenAIConfig:
             "temperature",
             "n",
             "stream",
+            "stream_options",
             "stop",
             "max_tokens",
             "max_completion_tokens",
@@ -938,6 +939,7 @@ class AzureChatCompletion(BaseLLM):
             model=model,
             custom_llm_provider="azure",
             logging_obj=logging_obj,
+            stream_options=data.get("stream_options", None),
             _response_headers=process_azure_headers(headers),
         )
         return streamwrapper
@@ -1006,6 +1008,7 @@ class AzureChatCompletion(BaseLLM):
                 model=model,
                 custom_llm_provider="azure",
                 logging_obj=logging_obj,
+                stream_options=data.get("stream_options", None),
                 _response_headers=headers,
             )
             return streamwrapper  ## DO NOT make this into an async for ... loop, it will yield an async generator, which won't raise errors if the response fails
@@ -1810,7 +1813,9 @@ class AzureChatCompletion(BaseLLM):
         elif mode == "audio_transcription":
             # Get the current directory of the file being run
             pwd = os.path.dirname(os.path.realpath(__file__))
-            file_path = os.path.join(pwd, "../tests/gettysburg.wav")
+            file_path = os.path.join(
+                pwd, "../../../tests/gettysburg.wav"
+            )  # proxy address
             audio_file = open(file_path, "rb")
             completion = await client.audio.transcriptions.with_raw_response.create(
                 file=audio_file,

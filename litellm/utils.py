@@ -80,6 +80,7 @@ from litellm.types.llms.openai import (
     AllMessageValues,
     ChatCompletionNamedToolChoiceParam,
     ChatCompletionToolParam,
+    ChatCompletionToolParamFunctionChunk,
 )
 from litellm.types.utils import FileTypes  # type: ignore
 from litellm.types.utils import (
@@ -560,13 +561,11 @@ def function_setup(
             dynamic_success_callbacks=dynamic_success_callbacks,
             dynamic_failure_callbacks=dynamic_failure_callbacks,
             dynamic_async_success_callbacks=dynamic_async_success_callbacks,
-            langfuse_public_key=kwargs.pop("langfuse_public_key", None),
-            langfuse_secret=kwargs.pop("langfuse_secret", None)
-            or kwargs.pop("langfuse_secret_key", None),
-            langfuse_host=kwargs.pop("langfuse_host", None),
+            kwargs=kwargs,
         )
+
         ## check if metadata is passed in
-        litellm_params = {"api_base": ""}
+        litellm_params: Dict[str, Any] = {"api_base": ""}
         if "metadata" in kwargs:
             litellm_params["metadata"] = kwargs["metadata"]
         logging_obj.update_environment_variables(
@@ -2553,9 +2552,9 @@ def get_optional_params_image_gen(
 def get_optional_params_embeddings(
     # 2 optional params
     model: str,
-    user=None,
-    encoding_format=None,
-    dimensions=None,
+    user: Optional[str] = None,
+    encoding_format: Optional[str] = None,
+    dimensions: Optional[int] = None,
     custom_llm_provider="",
     drop_params: Optional[bool] = None,
     additional_drop_params: Optional[bool] = None,
@@ -2596,7 +2595,6 @@ def get_optional_params_embeddings(
         default_params=default_params,
         additional_drop_params=additional_drop_params,
     )
-
     ## raise exception if non-default value passed for non-openai/azure embedding calls
     if custom_llm_provider == "openai":
         # 'dimensions` is only supported in `text-embedding-3` and later models
@@ -2628,6 +2626,17 @@ def get_optional_params_embeddings(
         )
         final_params = {**optional_params, **kwargs}
         return final_params
+    elif custom_llm_provider == "nvidia_nim":
+        supported_params = get_supported_openai_params(
+            model=model or "",
+            custom_llm_provider="nvidia_nim",
+            request_type="embeddings",
+        )
+        _check_valid_arg(supported_params=supported_params)
+        optional_params = litellm.nvidiaNimEmbeddingConfig.map_openai_params(
+            non_default_params=non_default_params, optional_params={}, kwargs=kwargs
+        )
+        return optional_params
     elif custom_llm_provider == "vertex_ai":
         supported_params = get_supported_openai_params(
             model=model,
@@ -3360,7 +3369,8 @@ def get_optional_params(
         supported_params = get_supported_openai_params(
             model=model, custom_llm_provider=custom_llm_provider
         )
-        if model in litellm.BEDROCK_CONVERSE_MODELS:
+        base_model = litellm.AmazonConverseConfig()._get_base_model(model)
+        if base_model in litellm.BEDROCK_CONVERSE_MODELS:
             _check_valid_arg(supported_params=supported_params)
             optional_params = litellm.AmazonConverseConfig().map_openai_params(
                 model=model,
@@ -4308,7 +4318,10 @@ def get_supported_openai_params(
         else:
             return litellm.FireworksAIConfig().get_supported_openai_params()
     elif custom_llm_provider == "nvidia_nim":
-        return litellm.NvidiaNimConfig().get_supported_openai_params(model=model)
+        if request_type == "chat_completion":
+            return litellm.nvidiaNimConfig.get_supported_openai_params(model=model)
+        elif request_type == "embeddings":
+            return litellm.nvidiaNimEmbeddingConfig.get_supported_openai_params()
     elif custom_llm_provider == "cerebras":
         return litellm.CerebrasConfig().get_supported_openai_params(model=model)
     elif custom_llm_provider == "ai21_chat":
@@ -9255,3 +9268,24 @@ def process_response_headers(response_headers: Union[httpx.Headers, dict]) -> di
         **additional_headers,
     }
     return additional_headers
+
+
+def add_dummy_tool(custom_llm_provider: str) -> List[ChatCompletionToolParam]:
+    """
+    Prevent Anthropic from raising error when tool_use block exists but no tools are provided.
+
+    Relevent Issues: https://github.com/BerriAI/litellm/issues/5388, https://github.com/BerriAI/litellm/issues/5747
+    """
+    return [
+        ChatCompletionToolParam(
+            type="function",
+            function=ChatCompletionToolParamFunctionChunk(
+                name="dummy-tool",
+                description="This is a dummy tool call",  # provided to satisfy bedrock constraint.
+                parameters={
+                    "type": "object",
+                    "properties": {},
+                },
+            ),
+        )
+    ]
