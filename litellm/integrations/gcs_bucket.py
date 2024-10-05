@@ -46,12 +46,6 @@ class GCSBucketLogger(GCSBucketBase):
                 f"GCS Bucket logging is a premium feature. Please upgrade to use it. {CommonProxyErrors.not_premium_user.value}"
             )
 
-        if self.path_service_account_json is None:
-            raise ValueError(
-                "GCS_PATH_SERVICE_ACCOUNT is not set in the environment, but GCS Bucket is being used as a logging callback. Please set 'GCS_PATH_SERVICE_ACCOUNT' in the environment."
-            )
-        pass
-
     #### ASYNC ####
     async def async_log_success_event(self, kwargs, response_obj, start_time, end_time):
         from litellm.proxy.proxy_server import premium_user
@@ -82,7 +76,7 @@ class GCSBucketLogger(GCSBucketBase):
             if logging_payload is None:
                 raise ValueError("standard_logging_object not found in kwargs")
 
-            json_logged_payload = json.dumps(logging_payload)
+            json_logged_payload = json.dumps(logging_payload, default=str)
 
             # Get the current date
             current_date = datetime.now().strftime("%Y-%m-%d")
@@ -137,7 +131,7 @@ class GCSBucketLogger(GCSBucketBase):
             _litellm_params = kwargs.get("litellm_params") or {}
             metadata = _litellm_params.get("metadata") or {}
 
-            json_logged_payload = json.dumps(logging_payload)
+            json_logged_payload = json.dumps(logging_payload, default=str)
 
             # Get the current date
             current_date = datetime.now().strftime("%Y-%m-%d")
@@ -178,26 +172,46 @@ class GCSBucketLogger(GCSBucketBase):
             kwargs.get("standard_callback_dynamic_params", None)
         )
 
+        bucket_name: str
+        path_service_account: str
         if standard_callback_dynamic_params is not None:
             verbose_logger.debug("Using dynamic GCS logging")
             verbose_logger.debug(
                 "standard_callback_dynamic_params: %s", standard_callback_dynamic_params
             )
 
-            bucket_name: str = (
+            _bucket_name: Optional[str] = (
                 standard_callback_dynamic_params.get("gcs_bucket_name", None)
                 or self.BUCKET_NAME
             )
-            path_service_account: str = (
+            _path_service_account: Optional[str] = (
                 standard_callback_dynamic_params.get("gcs_path_service_account", None)
                 or self.path_service_account_json
             )
 
+            if _bucket_name is None:
+                raise ValueError(
+                    "GCS_BUCKET_NAME is not set in the environment, but GCS Bucket is being used as a logging callback. Please set 'GCS_BUCKET_NAME' in the environment."
+                )
+            if _path_service_account is None:
+                raise ValueError(
+                    "GCS_PATH_SERVICE_ACCOUNT is not set in the environment, but GCS Bucket is being used as a logging callback. Please set 'GCS_PATH_SERVICE_ACCOUNT' in the environment."
+                )
+            bucket_name = _bucket_name
+            path_service_account = _path_service_account
             vertex_instance = await self.get_or_create_vertex_instance(
                 credentials=path_service_account
             )
         else:
             # If no dynamic parameters, use the default instance
+            if self.BUCKET_NAME is None:
+                raise ValueError(
+                    "GCS_BUCKET_NAME is not set in the environment, but GCS Bucket is being used as a logging callback. Please set 'GCS_BUCKET_NAME' in the environment."
+                )
+            if self.path_service_account_json is None:
+                raise ValueError(
+                    "GCS_PATH_SERVICE_ACCOUNT is not set in the environment, but GCS Bucket is being used as a logging callback. Please set 'GCS_PATH_SERVICE_ACCOUNT' in the environment."
+                )
             bucket_name = self.BUCKET_NAME
             path_service_account = self.path_service_account_json
             vertex_instance = await self.get_or_create_vertex_instance(
