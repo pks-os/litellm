@@ -636,7 +636,46 @@ general_settings:
   use_client_credentials_pass_through_routes: boolean  # use client credentials for all pass through routes like "/vertex-ai", /bedrock/. When this is True Virtual Key auth will not be applied on these endpoints
 ```
 
-### Router Settings
+### litellm_settings - Reference
+
+| Name | Type | Description |
+|------|------|-------------|
+| success_callback | array of strings | List of success callbacks. [Doc Proxy logging callbacks](logging), [Doc Metrics](prometheus) |
+| failure_callback | array of strings | List of failure callbacks [Doc Proxy logging callbacks](logging), [Doc Metrics](prometheus) |
+| callbacks | array of strings | List of callbacks - runs on success and failure [Doc Proxy logging callbacks](logging), [Doc Metrics](prometheus) |
+| service_callbacks | array of strings | System health monitoring - Logs redis, postgres failures on specified services (e.g. datadog, prometheus) [Doc Metrics](prometheus) |
+| turn_off_message_logging | boolean | If true, prevents messages and responses from being logged to callbacks, but request metadata will still be logged [Proxy Logging](logging) |
+| redact_user_api_key_info | boolean | If true, redacts information about the user api key from logs [Proxy Logging](logging#redacting-userapikeyinfo) |
+
+### general_settings - Reference
+
+| Name | Type | Description |
+|------|------|-------------|
+| completion_model | string | The default model to use for completions when `model` is not specified in the request |
+| disable_spend_logs | boolean | If true, turns off writing each transaction to the database |
+| disable_master_key_return | boolean | If true, turns off returning master key on UI. (checked on '/user/info' endpoint) |
+| disable_retry_on_max_parallel_request_limit_error | boolean | If true, turns off retries when max parallel request limit is reached |
+| disable_reset_budget | boolean | If true, turns off reset budget scheduled task |
+| disable_adding_master_key_hash_to_db | boolean | If true, turns off storing master key hash in db |
+| enable_jwt_auth | boolean | allow proxy admin to auth in via jwt tokens with 'litellm_proxy_admin' in claims. [Doc on JWT Tokens](token_auth) |
+| enforce_user_param | boolean | If true, requires all OpenAI endpoint requests to have a 'user' param. [Doc on call hooks](call_hooks)|
+| allowed_routes | array of strings | List of allowed proxy API routes a user can access [Doc on controlling allowed routes](enterprise#control-available-public-private-routes)|
+| key_management_system | string | Specifies the key management system. [Doc Secret Managers](../secret) |
+| master_key | string | The master key for the proxy [Set up Virtual Keys](virtual_keys) |
+| database_url | string | The URL for the database connection [Set up Virtual Keys](virtual_keys) |
+| database_connection_pool_limit | integer | The limit for database connection pool [Setting DB Connection Pool limit](#configure-db-pool-limits--connection-timeouts) |
+| database_connection_timeout | integer | The timeout for database connections in seconds [Setting DB Connection Pool limit, timeout](#configure-db-pool-limits--connection-timeouts) |
+| custom_auth | string | Write your own custom authentication logic [Doc Custom Auth](virtual_keys#custom-auth) |
+| max_parallel_requests | integer | The max parallel requests allowed per deployment |
+| global_max_parallel_requests | integer | The max parallel requests allowed on the proxy overall |
+| infer_model_from_keys | boolean | If true, infers the model from the provided keys |
+| background_health_checks | boolean | If true, enables background health checks. [Doc on health checks](health) |
+| health_check_interval | integer | The interval for health checks in seconds [Doc on health checks](health) |
+| alerting | array of strings | List of alerting methods [Doc on Slack Alerting](alerting) |
+| alerting_threshold | integer | The threshold for triggering alerts [Doc on Slack Alerting](alerting) |
+| use_client_credentials_pass_through_routes | boolean | If true, uses client credentials for all pass-through routes. [Doc on pass through routes](pass_through) |
+
+### router_settings - Reference
 
 ```yaml
 router_settings:
@@ -648,6 +687,7 @@ router_settings:
   allowed_fails: 3 # cooldown model if it fails > 1 call in a minute. 
   cooldown_time: 30 # (in seconds) how long to cooldown model if fails/min > allowed_fails
   disable_cooldowns: True                  # bool - Disable cooldowns for all models 
+  enable_tag_filtering: True                # bool - Use tag based routing for requests
   retry_policy: {                          # Dict[str, int]: retry policy for different types of exceptions
     "AuthenticationErrorRetries": 3,
     "TimeoutErrorRetries": 3,
@@ -667,6 +707,21 @@ router_settings:
   fallbacks=[{"claude-2": ["my-fallback-model"]}] # List[Dict[str, List[str]]]: Fallback model for all errors
 ```
 
+| Name | Type | Description |
+|------|------|-------------|
+| routing_strategy | string | The strategy used for routing requests. Options: "simple-shuffle", "least-busy", "usage-based-routing", "latency-based-routing". Default is "simple-shuffle". [More information here](../routing) |
+| redis_host | string | The host address for the Redis server. **Only set this if you have multiple instances of LiteLLM Proxy and want current tpm/rpm tracking to be shared across them** |
+| redis_password | string | The password for the Redis server. **Only set this if you have multiple instances of LiteLLM Proxy and want current tpm/rpm tracking to be shared across them** |
+| redis_port | string | The port number for the Redis server. **Only set this if you have multiple instances of LiteLLM Proxy and want current tpm/rpm tracking to be shared across them**|
+| enable_pre_call_check | boolean | If true, checks if a call is within the model's context window before making the call. [More information here](reliability) |
+| content_policy_fallbacks | array of objects | Specifies fallback models for content policy violations. [More information here](reliability) |
+| fallbacks | array of objects | Specifies fallback models for all types of errors. [More information here](reliability) |
+| enable_tag_filtering | boolean | If true, uses tag based routing for requests [Tag Based Routing](tag_routing) |
+| cooldown_time | integer | The duration (in seconds) to cooldown a model if it exceeds the allowed failures. |
+| disable_cooldowns | boolean | If true, disables cooldowns for all models. [More information here](reliability) |
+| retry_policy | object | Specifies the number of retries for different types of exceptions. [More information here](reliability) |
+| allowed_fails | integer | The number of failures allowed before cooling down a model. [More information here](reliability) |
+| allowed_fails_policy | object | Specifies the number of allowed failures for different error types before cooling down a deployment. [More information here](reliability) |
 
 ## Extras
 
