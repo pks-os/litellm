@@ -24,7 +24,7 @@ from litellm import RateLimitError, Timeout, completion, completion_cost, embedd
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.llms.prompt_templates.factory import anthropic_messages_pt
 
-# litellm.num_retries = 3
+# litellm.num_retries=3
 
 litellm.cache = None
 litellm.success_callback = []
@@ -1929,7 +1929,7 @@ def test_hf_test_completion_tgi():
 # hf_test_completion_tgi()
 
 
-@pytest.mark.parametrize("provider", ["vertex_ai_beta"])  # "vertex_ai",
+@pytest.mark.parametrize("provider", ["openai", "hosted_vllm"])  # "vertex_ai",
 @pytest.mark.asyncio
 async def test_openai_compatible_custom_api_base(provider):
     litellm.set_verbose = True
@@ -1947,15 +1947,15 @@ async def test_openai_compatible_custom_api_base(provider):
         openai_client.chat.completions, "create", new=MagicMock()
     ) as mock_call:
         try:
-            response = completion(
-                model="openai/my-vllm-model",
+            completion(
+                model="{provider}/my-vllm-model".format(provider=provider),
                 messages=messages,
                 response_format={"type": "json_object"},
                 client=openai_client,
                 api_base="my-custom-api-base",
                 hello="world",
             )
-        except Exception as e:
+        except Exception:
             pass
 
         mock_call.assert_called_once()
