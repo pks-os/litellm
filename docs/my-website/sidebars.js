@@ -51,7 +51,7 @@ const sidebars = {
         {
           type: "category",
           label: "🔑 Authentication",
-          items: ["proxy/virtual_keys", "proxy/token_auth", "proxy/service_accounts", "proxy/ip_address"],
+          items: ["proxy/virtual_keys", "proxy/token_auth", "proxy/service_accounts", "proxy/access_control","proxy/ip_address"],
         },
         {
           type: "category",
@@ -78,7 +78,11 @@ const sidebars = {
         {
           type: "category",
           label: "Admin UI",
-          items: ["proxy/ui", "proxy/self_serve", "proxy/custom_sso"],
+          items: [
+            "proxy/ui", 
+            "proxy/self_serve", 
+            "proxy/custom_sso"
+          ],
         },
         {
           type: "category",
