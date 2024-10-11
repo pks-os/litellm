@@ -76,6 +76,7 @@ from ..integrations.literal_ai import LiteralAILogger
 from ..integrations.logfire_logger import LogfireLevel, LogfireLogger
 from ..integrations.lunary import LunaryLogger
 from ..integrations.openmeter import OpenMeterLogger
+from ..integrations.opik.opik import OpikLogger
 from ..integrations.prometheus import PrometheusLogger
 from ..integrations.prometheus_services import PrometheusServicesLogger
 from ..integrations.prompt_layer import PromptLayerLogger
@@ -901,12 +902,17 @@ class Logging:
                         complete_streaming_response = None
                 else:
                     self.sync_streaming_chunks.append(result)
-
+            _caching_complete_streaming_response: Optional[
+                Union[ModelResponse, TextCompletionResponse]
+            ] = None
             if complete_streaming_response is not None:
                 verbose_logger.debug(
                     "Logging Details LiteLLM-Success Call streaming complete"
                 )
                 self.model_call_details["complete_streaming_response"] = (
+                    complete_streaming_response
+                )
+                _caching_complete_streaming_response = copy.deepcopy(
                     complete_streaming_response
                 )
                 self.model_call_details["response_cost"] = (
@@ -937,6 +943,20 @@ class Logging:
             else:
                 callbacks = litellm.success_callback
 
+            ## STREAMING CACHING ##
+            if "cache" in callbacks and litellm.cache is not None:
+                # this only logs streaming once, complete_streaming_response exists i.e when stream ends
+                print_verbose("success_callback: reaches cache for logging!")
+                kwargs = self.model_call_details
+                if self.stream and _caching_complete_streaming_response is not None:
+                    print_verbose(
+                        "success_callback: reaches cache for logging, there is a complete_streaming_response. Adding to cache"
+                    )
+                    result = _caching_complete_streaming_response
+                    # only add to cache once we have a complete streaming response
+                    litellm.cache.add_cache(result, **kwargs)
+
+            ## REDACT MESSAGES ##
             result = redact_message_input_output_from_logging(
                 model_call_details=(
                     self.model_call_details
@@ -1302,23 +1322,6 @@ class Logging:
                             end_time=end_time,
                             print_verbose=print_verbose,
                         )
-                    if callback == "cache" and litellm.cache is not None:
-                        # this only logs streaming once, complete_streaming_response exists i.e when stream ends
-                        print_verbose("success_callback: reaches cache for logging!")
-                        kwargs = self.model_call_details
-                        if self.stream:
-                            if "complete_streaming_response" not in kwargs:
-                                print_verbose(
-                                    f"success_callback: reaches cache for logging, there is no complete_streaming_response. Kwargs={kwargs}\n\n"
-                                )
-                                pass
-                            else:
-                                print_verbose(
-                                    "success_callback: reaches cache for logging, there is a complete_streaming_response. Adding to cache"
-                                )
-                                result = kwargs["complete_streaming_response"]
-                                # only add to cache once we have a complete streaming response
-                                litellm.cache.add_cache(result, **kwargs)
                     if callback == "athina" and athinaLogger is not None:
                         deep_copy = {}
                         for k, v in self.model_call_details.items():
@@ -2428,6 +2431,14 @@ def _init_custom_logger_compatible_class(
         _gcs_bucket_logger = GCSBucketLogger()
         _in_memory_loggers.append(_gcs_bucket_logger)
         return _gcs_bucket_logger  # type: ignore
+    elif logging_integration == "opik":
+        for callback in _in_memory_loggers:
+            if isinstance(callback, OpikLogger):
+                return callback  # type: ignore
+
+        _opik_logger = OpikLogger()
+        _in_memory_loggers.append(_opik_logger)
+        return _opik_logger  # type: ignore
     elif logging_integration == "arize":
         if "ARIZE_SPACE_KEY" not in os.environ:
             raise ValueError("ARIZE_SPACE_KEY not found in environment variables")
@@ -2560,6 +2571,10 @@ def get_custom_logger_compatible_class(
     elif logging_integration == "gcs_bucket":
         for callback in _in_memory_loggers:
             if isinstance(callback, GCSBucketLogger):
+                return callback
+    elif logging_integration == "opik":
+        for callback in _in_memory_loggers:
+            if isinstance(callback, OpikLogger):
                 return callback
     elif logging_integration == "otel":
         from litellm.integrations.opentelemetry import OpenTelemetry
