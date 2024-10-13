@@ -129,6 +129,7 @@ class CallTypes(Enum):
     speech = "speech"
     rerank = "rerank"
     arerank = "arerank"
+    arealtime = "_arealtime"
 
 
 class PassthroughCallTypes(Enum):
@@ -1417,3 +1418,17 @@ class StandardCallbackDynamicParams(TypedDict, total=False):
     # GCS dynamic params
     gcs_bucket_name: Optional[str]
     gcs_path_service_account: Optional[str]
+
+
+CachingSupportedCallTypes = Literal[
+    "completion",
+    "acompletion",
+    "embedding",
+    "aembedding",
+    "atranscription",
+    "transcription",
+    "atext_completion",
+    "text_completion",
+    "arerank",
+    "rerank",
+]

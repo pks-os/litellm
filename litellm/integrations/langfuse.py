@@ -191,7 +191,6 @@ class LangFuseLogger:
                         pass
 
             # end of processing langfuse ########################
-
             if (
                 level == "ERROR"
                 and status_message is not None
@@ -235,6 +234,14 @@ class LangFuseLogger:
             ):
                 input = prompt
                 output = response_obj.results
+            elif (
+                kwargs.get("call_type") is not None
+                and kwargs.get("call_type") == "_arealtime"
+                and response_obj is not None
+                and isinstance(response_obj, list)
+            ):
+                input = kwargs.get("input")
+                output = response_obj
             elif (
                 kwargs.get("call_type") is not None
                 and kwargs.get("call_type") == "pass_through_endpoint"

@@ -932,7 +932,7 @@ from .llms.vertex_ai_and_google_ai_studio.vertex_embeddings.transformation impor
 
 vertexAITextEmbeddingConfig = VertexAITextEmbeddingConfig()
 
-from .llms.vertex_ai_and_google_ai_studio.vertex_ai_anthropic import (
+from .llms.vertex_ai_and_google_ai_studio.vertex_ai_partner_models.anthropic.transformation import (
     VertexAIAnthropicConfig,
 )
 from .llms.vertex_ai_and_google_ai_studio.vertex_ai_partner_models.llama3.transformation import (
@@ -1041,6 +1041,7 @@ from .proxy.proxy_cli import run_server
 from .router import Router
 from .assistants.main import *
 from .batches.main import *
+from .batch_completion.main import *
 from .rerank_api.main import *
 from .realtime_api.main import _arealtime
 from .fine_tuning.main import *
