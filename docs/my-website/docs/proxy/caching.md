@@ -4,6 +4,12 @@ import TabItem from '@theme/TabItem';
 # Caching 
 Cache LLM Responses
 
+:::note 
+
+For OpenAI/Anthropic Prompt Caching, go [here](../completion/prompt_caching.md)
+
+:::
+
 LiteLLM supports:
 - In Memory Cache
 - Redis Cache 
@@ -43,13 +49,13 @@ litellm_settings:
   cache: true 
   cache_params:        # set cache params for redis
     type: redis
-    namespace: "litellm_caching"
+    namespace: "litellm.caching.caching"
 ```
 
 and keys will be stored like:
 
 ```
-litellm_caching:<hash>
+litellm.caching.caching:<hash>
 ```
 
 #### Redis Cluster 
