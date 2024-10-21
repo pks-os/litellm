@@ -1543,6 +1543,7 @@ class ProxyConfig:
             ## INIT PROXY REDIS USAGE CLIENT ##
             redis_usage_cache = litellm.cache.cache
 
+            
     async def get_config(self, config_file_path: Optional[str] = None) -> dict:
         """
         Load config file
@@ -1583,10 +1584,6 @@ class ProxyConfig:
         ## PRINT YAML FOR CONFIRMING IT WORKS
         printed_yaml = copy.deepcopy(config)
         printed_yaml.pop("environment_variables", None)
-
-        verbose_proxy_logger.debug(
-            f"Loaded config YAML (api_key and environment_variables are not shown):\n{json.dumps(printed_yaml, indent=2)}"
-        )
 
         config = self._check_for_os_environ_vars(config=config)
 
