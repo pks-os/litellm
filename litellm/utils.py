@@ -70,6 +70,9 @@ from litellm.litellm_core_utils.get_llm_provider_logic import (
     get_llm_provider,
 )
 from litellm.litellm_core_utils.llm_request_utils import _ensure_extra_body_is_safe
+from litellm.litellm_core_utils.llm_response_utils.get_headers import (
+    get_response_headers,
+)
 from litellm.litellm_core_utils.redact_messages import (
     LiteLLMLoggingObject,
     redact_message_input_output_from_logging,
@@ -5642,38 +5645,41 @@ def _handle_invalid_parallel_tool_calls(
 
     if tool_calls is None:
         return
-
-    replacements: Dict[int, List[ChatCompletionMessageToolCall]] = defaultdict(list)
-    for i, tool_call in enumerate(tool_calls):
-        current_function = tool_call.function.name
-        function_args = json.loads(tool_call.function.arguments)
-        if current_function == "multi_tool_use.parallel":
-            verbose_logger.debug(
-                "OpenAI did a weird pseudo-multi-tool-use call, fixing call structure.."
-            )
-            for _fake_i, _fake_tool_use in enumerate(function_args["tool_uses"]):
-                _function_args = _fake_tool_use["parameters"]
-                _current_function = _fake_tool_use["recipient_name"]
-                if _current_function.startswith("functions."):
-                    _current_function = _current_function[len("functions.") :]
-
-                fixed_tc = ChatCompletionMessageToolCall(
-                    id=f"{tool_call.id}_{_fake_i}",
-                    type="function",
-                    function=Function(
-                        name=_current_function, arguments=json.dumps(_function_args)
-                    ),
+    try:
+        replacements: Dict[int, List[ChatCompletionMessageToolCall]] = defaultdict(list)
+        for i, tool_call in enumerate(tool_calls):
+            current_function = tool_call.function.name
+            function_args = json.loads(tool_call.function.arguments)
+            if current_function == "multi_tool_use.parallel":
+                verbose_logger.debug(
+                    "OpenAI did a weird pseudo-multi-tool-use call, fixing call structure.."
                 )
-                replacements[i].append(fixed_tc)
+                for _fake_i, _fake_tool_use in enumerate(function_args["tool_uses"]):
+                    _function_args = _fake_tool_use["parameters"]
+                    _current_function = _fake_tool_use["recipient_name"]
+                    if _current_function.startswith("functions."):
+                        _current_function = _current_function[len("functions.") :]
 
-    shift = 0
-    for i, replacement in replacements.items():
-        tool_calls[:] = (
-            tool_calls[: i + shift] + replacement + tool_calls[i + shift + 1 :]
-        )
-        shift += len(replacement)
+                    fixed_tc = ChatCompletionMessageToolCall(
+                        id=f"{tool_call.id}_{_fake_i}",
+                        type="function",
+                        function=Function(
+                            name=_current_function, arguments=json.dumps(_function_args)
+                        ),
+                    )
+                    replacements[i].append(fixed_tc)
 
-    return tool_calls
+        shift = 0
+        for i, replacement in replacements.items():
+            tool_calls[:] = (
+                tool_calls[: i + shift] + replacement + tool_calls[i + shift + 1 :]
+            )
+            shift += len(replacement)
+
+        return tool_calls
+    except json.JSONDecodeError:
+        # if there is a JSONDecodeError, return the original tool_calls
+        return tool_calls
 
 
 def convert_to_model_response_object(  # noqa: PLR0915
@@ -5701,36 +5707,12 @@ def convert_to_model_response_object(  # noqa: PLR0915
 ):
     received_args = locals()
 
-    if _response_headers is not None:
-        openai_headers = {}
-        if "x-ratelimit-limit-requests" in _response_headers:
-            openai_headers["x-ratelimit-limit-requests"] = _response_headers[
-                "x-ratelimit-limit-requests"
-            ]
-        if "x-ratelimit-remaining-requests" in _response_headers:
-            openai_headers["x-ratelimit-remaining-requests"] = _response_headers[
-                "x-ratelimit-remaining-requests"
-            ]
-        if "x-ratelimit-limit-tokens" in _response_headers:
-            openai_headers["x-ratelimit-limit-tokens"] = _response_headers[
-                "x-ratelimit-limit-tokens"
-            ]
-        if "x-ratelimit-remaining-tokens" in _response_headers:
-            openai_headers["x-ratelimit-remaining-tokens"] = _response_headers[
-                "x-ratelimit-remaining-tokens"
-            ]
-        llm_response_headers = {
-            "{}-{}".format("llm_provider", k): v for k, v in _response_headers.items()
-        }
-        if hidden_params is not None:
-            hidden_params["additional_headers"] = {
-                **llm_response_headers,
-                **openai_headers,
-            }
-        else:
-            hidden_params = {
-                "additional_headers": {**llm_response_headers, **openai_headers}
-            }
+    additional_headers = get_response_headers(_response_headers)
+
+    if hidden_params is None:
+        hidden_params = {}
+    hidden_params["additional_headers"] = additional_headers
+
     ### CHECK IF ERROR IN RESPONSE ### - openrouter returns these in the dictionary
     if (
         response_object is not None
