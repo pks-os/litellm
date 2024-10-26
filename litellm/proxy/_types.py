@@ -340,6 +340,7 @@ class LiteLLMRoutes(enum.Enum):
         "/sso/get/ui_settings",
         "/login",
         "/key/generate",
+        "/key/{token_id}/regenerate",
         "/key/update",
         "/key/info",
         "/key/delete",
@@ -1371,6 +1372,8 @@ class LiteLLM_VerificationToken(LiteLLMBase):
     blocked: Optional[bool] = None
     litellm_budget_table: Optional[dict] = None
     org_id: Optional[str] = None  # org id for a given key
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(protected_namespaces=())
 
