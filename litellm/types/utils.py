@@ -1292,6 +1292,7 @@ all_litellm_params = [
     "metadata",
     "tags",
     "acompletion",
+    "aimg_generation",
     "atext_completion",
     "text_completion",
     "caching",
@@ -1314,6 +1315,7 @@ all_litellm_params = [
     "num_retries",
     "context_window_fallback_dict",
     "retry_policy",
+    "retry_strategy",
     "roles",
     "final_prompt_value",
     "bos_token",
@@ -1357,6 +1359,8 @@ all_litellm_params = [
     "ensure_alternating_roles",
     "assistant_continue_message",
     "user_continue_message",
+    "fallback_depth",
+    "max_fallbacks",
 ]
 
 
@@ -1433,12 +1437,19 @@ class StandardLoggingMetadata(StandardLoggingUserAPIKeyMetadata):
     requester_metadata: Optional[dict]
 
 
+class StandardLoggingAdditionalHeaders(TypedDict, total=False):
+    x_ratelimit_limit_requests: int
+    x_ratelimit_limit_tokens: int
+    x_ratelimit_remaining_requests: int
+    x_ratelimit_remaining_tokens: int
+
+
 class StandardLoggingHiddenParams(TypedDict):
     model_id: Optional[str]
     cache_key: Optional[str]
     api_base: Optional[str]
     response_cost: Optional[str]
-    additional_headers: Optional[dict]
+    additional_headers: Optional[StandardLoggingAdditionalHeaders]
 
 
 class StandardLoggingModelInformation(TypedDict):
