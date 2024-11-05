@@ -1373,9 +1373,6 @@ class ProxyConfig:
     ) -> dict:
         """
         Given a config file path, load the config from the file.
-
-        If `store_model_in_db` is True, then read the DB and update the config with the DB values.
-
         Args:
             config_file_path (str): path to the config file
         Returns:
@@ -1400,40 +1397,6 @@ class ProxyConfig:
                 "router_settings": {},
                 "litellm_settings": {},
             }
-
-        ## DB
-        if prisma_client is not None and (
-            general_settings.get("store_model_in_db", False) is True
-            or store_model_in_db is True
-        ):
-            _tasks = []
-            keys = [
-                "general_settings",
-                "router_settings",
-                "litellm_settings",
-                "environment_variables",
-            ]
-            for k in keys:
-                response = prisma_client.get_generic_data(
-                    key="param_name", value=k, table_name="config"
-                )
-                _tasks.append(response)
-
-            responses = await asyncio.gather(*_tasks)
-            for response in responses:
-                if response is not None:
-                    param_name = getattr(response, "param_name", None)
-                    param_value = getattr(response, "param_value", None)
-                    if param_name is not None and param_value is not None:
-                        # check if param_name is already in the config
-                        if param_name in config:
-                            if isinstance(config[param_name], dict):
-                                config[param_name].update(param_value)
-                            else:
-                                config[param_name] = param_value
-                        else:
-                            # if it's not in the config - then add it
-                            config[param_name] = param_value
 
         return config
 
@@ -1500,8 +1463,10 @@ class ProxyConfig:
         - for a given team id
         - return the relevant completion() call params
         """
+
         # load existing config
         config = await self.get_config()
+
         ## LITELLM MODULE SETTINGS (e.g. litellm.drop_params=True,..)
         litellm_settings = config.get("litellm_settings", {})
         all_teams_config = litellm_settings.get("default_team_settings", None)
@@ -2993,7 +2958,7 @@ class ProxyStartupEvent:
         scheduler.start()
 
     @classmethod
-    def _setup_prisma_client(
+    async def _setup_prisma_client(
         cls,
         database_url: Optional[str],
         proxy_logging_obj: ProxyLogging,
@@ -3011,6 +2976,8 @@ class ProxyStartupEvent:
                 )
             except Exception as e:
                 raise e
+
+            await prisma_client.connect()
 
             ## Add necessary views to proxy ##
             asyncio.create_task(
@@ -3033,7 +3000,7 @@ async def startup_event():
     # check if DATABASE_URL in environment - load from there
     if prisma_client is None:
         _db_url: Optional[str] = get_secret("DATABASE_URL", None)  # type: ignore
-        prisma_client = ProxyStartupEvent._setup_prisma_client(
+        prisma_client = await ProxyStartupEvent._setup_prisma_client(
             database_url=_db_url,
             proxy_logging_obj=proxy_logging_obj,
             user_api_key_cache=user_api_key_cache,
@@ -3123,9 +3090,6 @@ async def startup_event():
         prompt_injection_detection_obj.update_environment(router=llm_router)
 
     verbose_proxy_logger.debug("prisma_client: %s", prisma_client)
-    if prisma_client is not None:
-        await prisma_client.connect()
-
     if prisma_client is not None and master_key is not None:
         ProxyStartupEvent._add_master_key_hash_to_db(
             master_key=master_key,
@@ -8825,7 +8789,7 @@ async def update_config(config_info: ConfigYAML):  # noqa: PLR0915
                 if k == "alert_to_webhook_url":
                     # check if slack is already enabled. if not, enable it
                     if "alerting" not in _existing_settings:
-                        _existing_settings["alerting"].append("slack")
+                        _existing_settings = {"alerting": ["slack"]}
                     elif isinstance(_existing_settings["alerting"], list):
                         if "slack" not in _existing_settings["alerting"]:
                             _existing_settings["alerting"].append("slack")
