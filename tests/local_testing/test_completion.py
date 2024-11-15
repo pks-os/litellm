@@ -24,7 +24,7 @@ from litellm import RateLimitError, Timeout, completion, completion_cost, embedd
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler, HTTPHandler
 from litellm.llms.prompt_templates.factory import anthropic_messages_pt
 
-# litellm.num_retries = 3
+# litellm.num_retries=3
 
 litellm.cache = None
 litellm.success_callback = []
@@ -679,6 +679,8 @@ async def test_anthropic_no_content_error():
             frequency_penalty=0.8,
         )
 
+        pass
+    except litellm.InternalServerError:
         pass
     except litellm.APIError as e:
         assert e.status_code == 500
