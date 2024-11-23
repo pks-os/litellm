@@ -625,6 +625,48 @@ jobs:
           paths:
             - llm_translation_coverage.xml
             - llm_translation_coverage
+  pass_through_unit_testing:
+    docker:
+      - image: cimg/python:3.11
+        auth:
+          username: ${DOCKERHUB_USERNAME}
+          password: ${DOCKERHUB_PASSWORD}
+    working_directory: ~/project
+
+    steps:
+      - checkout
+      - run:
+          name: Install Dependencies
+          command: |
+            python -m pip install --upgrade pip
+            python -m pip install -r requirements.txt
+            pip install "pytest==7.3.1"
+            pip install "pytest-retry==1.6.3"
+            pip install "pytest-cov==5.0.0"
+            pip install "pytest-asyncio==0.21.1"
+            pip install "respx==0.21.1"
+      # Run pytest and generate JUnit XML report
+      - run:
+          name: Run tests
+          command: |
+            pwd
+            ls
+            python -m pytest -vv tests/pass_through_unit_tests --cov=litellm --cov-report=xml -x -s -v --junitxml=test-results/junit.xml --durations=5
+          no_output_timeout: 120m
+      - run:
+          name: Rename the coverage files
+          command: |
+            mv coverage.xml pass_through_unit_tests_coverage.xml
+            mv .coverage pass_through_unit_tests_coverage
+        
+      # Store test results
+      - store_test_results:
+          path: test-results
+      - persist_to_workspace:
+          root: .
+          paths:
+            - pass_through_unit_tests_coverage.xml
+            - pass_through_unit_tests_coverage
   image_gen_testing:
     docker:
       - image: cimg/python:3.11
@@ -771,6 +813,7 @@ jobs:
       - run: python ./tests/code_coverage_tests/litellm_logging_code_coverage.py
       - run: python ./tests/documentation_tests/test_env_keys.py
       - run: python ./tests/documentation_tests/test_api_docs.py
+      - run: python ./tests/code_coverage_tests/ensure_async_clients_test.py
       - run: helm lint ./deploy/charts/litellm-helm
 
   db_migration_disable_update_check:
@@ -922,7 +965,7 @@ jobs:
           command: |
             pwd
             ls
-            python -m pytest -s -vv tests/*.py -x --junitxml=test-results/junit.xml --durations=5 --ignore=tests/otel_tests --ignore=tests/pass_through_tests --ignore=tests/proxy_admin_ui_tests --ignore=tests/load_tests --ignore=tests/llm_translation --ignore=tests/image_gen_tests
+            python -m pytest -s -vv tests/*.py -x --junitxml=test-results/junit.xml --durations=5 --ignore=tests/otel_tests --ignore=tests/pass_through_tests --ignore=tests/proxy_admin_ui_tests --ignore=tests/load_tests --ignore=tests/llm_translation --ignore=tests/image_gen_tests --ignore=tests/pass_through_unit_tests
           no_output_timeout: 120m
 
       # Store test results
@@ -1136,6 +1179,15 @@ jobs:
             pip install "PyGithub==1.59.1"
             pip install "google-cloud-aiplatform==1.59.0"
             pip install anthropic
+            python -m pip install -r requirements.txt
+      # Run pytest and generate JUnit XML report
+      - run:
+          name: Run tests
+          command: |
+            pwd
+            ls
+            python -m pytest -vv tests/pass_through_unit_tests --cov=litellm --cov-report=xml -x -s -v --junitxml=test-results/junit.xml --durations=5
+          no_output_timeout: 120m
       - run:
           name: Build Docker image
           command: docker build -t my-app:latest -f ./docker/Dockerfile.database .
@@ -1171,6 +1223,26 @@ jobs:
       - run:
           name: Wait for app to be ready
           command: dockerize -wait http://localhost:4000 -timeout 5m
+      # New steps to run Node.js test
+      - run:
+          name: Install Node.js
+          command: |
+            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+            node --version
+            npm --version
+
+      - run:
+          name: Install Node.js dependencies
+          command: |
+            npm install @google-cloud/vertexai
+            npm install --save-dev jest
+
+      - run:
+          name: Run Vertex AI tests
+          command: |
+            npx jest tests/pass_through_tests/test_vertex.test.js --verbose
+          no_output_timeout: 30m
       - run:
           name: Run tests
           command: |
@@ -1178,7 +1250,6 @@ jobs:
             ls
             python -m pytest -vv tests/pass_through_tests/ -x --junitxml=test-results/junit.xml --durations=5
           no_output_timeout: 120m
-
       # Store test results
       - store_test_results:
           path: test-results
@@ -1204,7 +1275,7 @@ jobs:
             python -m venv venv
             . venv/bin/activate
             pip install coverage
-            coverage combine llm_translation_coverage logging_coverage litellm_router_coverage local_testing_coverage litellm_assistants_api_coverage auth_ui_unit_tests_coverage langfuse_coverage caching_coverage litellm_proxy_unit_tests_coverage image_gen_coverage
+            coverage combine llm_translation_coverage logging_coverage litellm_router_coverage local_testing_coverage litellm_assistants_api_coverage auth_ui_unit_tests_coverage langfuse_coverage caching_coverage litellm_proxy_unit_tests_coverage image_gen_coverage pass_through_unit_tests_coverage
             coverage xml
       - codecov/upload:
           file: ./coverage.xml
@@ -1493,6 +1564,12 @@ workflows:
               only:
                 - main
                 - /litellm_.*/
+      - pass_through_unit_testing:
+          filters:
+            branches:
+              only:
+                - main
+                - /litellm_.*/
       - image_gen_testing:
           filters:
             branches:
@@ -1508,6 +1585,7 @@ workflows:
       - upload-coverage:
           requires:
             - llm_translation_testing
+            - pass_through_unit_testing
             - image_gen_testing
             - logging_testing
             - litellm_router_testing
@@ -1548,6 +1626,7 @@ workflows:
             - load_testing
             - test_bad_database_url
             - llm_translation_testing
+            - pass_through_unit_testing
             - image_gen_testing
             - logging_testing
             - litellm_router_testing
