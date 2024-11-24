@@ -39,6 +39,145 @@ from litellm.proxy.utils import (
     handle_exception_on_proxy,
 )
 from litellm.secret_managers.main import get_secret
+from litellm.types.utils import PersonalUIKeyGenerationConfig, TeamUIKeyGenerationConfig
+
+
+def _is_team_key(data: GenerateKeyRequest):
+    return data.team_id is not None
+
+
+def _team_key_generation_team_member_check(
+    user_api_key_dict: UserAPIKeyAuth,
+    team_key_generation: Optional[TeamUIKeyGenerationConfig],
+):
+    if (
+        team_key_generation is None
+        or "allowed_team_member_roles" not in team_key_generation
+    ):
+        return True
+
+    if user_api_key_dict.team_member is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"User not assigned to team. Got team_member={user_api_key_dict.team_member}",
+        )
+
+    team_member_role = user_api_key_dict.team_member.role
+    if team_member_role not in team_key_generation["allowed_team_member_roles"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Team member role {team_member_role} not in allowed_team_member_roles={litellm.key_generation_settings['team_key_generation']['allowed_team_member_roles']}",  # type: ignore
+        )
+    return True
+
+
+def _key_generation_required_param_check(
+    data: GenerateKeyRequest, required_params: Optional[List[str]]
+):
+    if required_params is None:
+        return True
+
+    data_dict = data.model_dump(exclude_unset=True)
+    for param in required_params:
+        if param not in data_dict:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Required param {param} not in data",
+            )
+    return True
+
+
+def _team_key_generation_check(
+    user_api_key_dict: UserAPIKeyAuth, data: GenerateKeyRequest
+):
+    if (
+        litellm.key_generation_settings is None
+        or litellm.key_generation_settings.get("team_key_generation") is None
+    ):
+        return True
+
+    _team_key_generation = litellm.key_generation_settings["team_key_generation"]  # type: ignore
+
+    _team_key_generation_team_member_check(
+        user_api_key_dict,
+        team_key_generation=_team_key_generation,
+    )
+    _key_generation_required_param_check(
+        data,
+        _team_key_generation.get("required_params"),
+    )
+
+    return True
+
+
+def _personal_key_membership_check(
+    user_api_key_dict: UserAPIKeyAuth,
+    personal_key_generation: Optional[PersonalUIKeyGenerationConfig],
+):
+    if (
+        personal_key_generation is None
+        or "allowed_user_roles" not in personal_key_generation
+    ):
+        return True
+
+    if user_api_key_dict.user_role not in personal_key_generation["allowed_user_roles"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Personal key creation has been restricted by admin. Allowed roles={litellm.key_generation_settings['personal_key_generation']['allowed_user_roles']}. Your role={user_api_key_dict.user_role}",  # type: ignore
+        )
+
+    return True
+
+
+def _personal_key_generation_check(
+    user_api_key_dict: UserAPIKeyAuth, data: GenerateKeyRequest
+):
+
+    if (
+        litellm.key_generation_settings is None
+        or litellm.key_generation_settings.get("personal_key_generation") is None
+    ):
+        return True
+
+    _personal_key_generation = litellm.key_generation_settings["personal_key_generation"]  # type: ignore
+
+    _personal_key_membership_check(
+        user_api_key_dict,
+        personal_key_generation=_personal_key_generation,
+    )
+
+    _key_generation_required_param_check(
+        data,
+        _personal_key_generation.get("required_params"),
+    )
+
+    return True
+
+
+def key_generation_check(
+    user_api_key_dict: UserAPIKeyAuth, data: GenerateKeyRequest
+) -> bool:
+    """
+    Check if admin has restricted key creation to certain roles for teams or individuals
+    """
+    if (
+        litellm.key_generation_settings is None
+        or user_api_key_dict.user_role == LitellmUserRoles.PROXY_ADMIN.value
+    ):
+        return True
+
+    ## check if key is for team or individual
+    is_team_key = _is_team_key(data=data)
+
+    if is_team_key:
+        return _team_key_generation_check(
+            user_api_key_dict=user_api_key_dict, data=data
+        )
+    else:
+        return _personal_key_generation_check(
+            user_api_key_dict=user_api_key_dict, data=data
+        )
+
 
 router = APIRouter()
 
@@ -131,6 +270,8 @@ async def generate_key_fn(  # noqa: PLR0915
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, detail=message
                 )
+        elif litellm.key_generation_settings is not None:
+            key_generation_check(user_api_key_dict=user_api_key_dict, data=data)
         # check if user set default key/generate params on config.yaml
         if litellm.default_key_generate_params is not None:
             for elem in data:
