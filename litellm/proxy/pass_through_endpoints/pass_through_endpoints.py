@@ -529,16 +529,18 @@ async def pass_through_request(  # noqa: PLR0915
         response_body: Optional[dict] = get_response_body(response)
         passthrough_logging_payload["response_body"] = response_body
         end_time = datetime.now()
-        await pass_through_endpoint_logging.pass_through_async_success_handler(
-            httpx_response=response,
-            response_body=response_body,
-            url_route=str(url),
-            result="",
-            start_time=start_time,
-            end_time=end_time,
-            logging_obj=logging_obj,
-            cache_hit=False,
-            **kwargs,
+        asyncio.create_task(
+            pass_through_endpoint_logging.pass_through_async_success_handler(
+                httpx_response=response,
+                response_body=response_body,
+                url_route=str(url),
+                result="",
+                start_time=start_time,
+                end_time=end_time,
+                logging_obj=logging_obj,
+                cache_hit=False,
+                **kwargs,
+            )
         )
 
         return Response(
@@ -607,6 +609,11 @@ def _init_kwargs_for_pass_through_endpoint(
 
 
 def _update_metadata_with_tags_in_header(request: Request, metadata: dict) -> dict:
+    """
+    If tags are in the request headers, add them to the metadata
+
+    Used for google and vertex JS SDKs
+    """
     _tags = request.headers.get("tags")
     if _tags:
         metadata["tags"] = _tags.split(",")
