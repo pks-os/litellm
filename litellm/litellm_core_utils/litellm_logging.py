@@ -75,6 +75,7 @@ from ..integrations.helicone import HeliconeLogger
 from ..integrations.lago import LagoLogger
 from ..integrations.langfuse.langfuse import LangFuseLogger
 from ..integrations.langfuse.langfuse_handler import LangFuseHandler
+from ..integrations.langfuse.langfuse_prompt_management import LangfusePromptManagement
 from ..integrations.langsmith import LangsmithLogger
 from ..integrations.literal_ai import LiteralAILogger
 from ..integrations.logfire_logger import LogfireLevel, LogfireLogger
@@ -374,7 +375,11 @@ class Logging:
             for param in _supported_callback_params:
                 if param in kwargs:
                     _param_value = kwargs.pop(param)
-                    if _param_value is not None and "os.environ/" in _param_value:
+                    if (
+                        _param_value is not None
+                        and isinstance(_param_value, str)
+                        and "os.environ/" in _param_value
+                    ):
                         _param_value = get_secret_str(secret_name=_param_value)
                     standard_callback_dynamic_params[param] = _param_value  # type: ignore
         return standard_callback_dynamic_params
@@ -965,10 +970,10 @@ class Logging:
                 ),
                 result=result,
             )
-
             ## LOGGING HOOK ##
             for callback in callbacks:
                 if isinstance(callback, CustomLogger):
+
                     self.model_call_details, result = callback.logging_hook(
                         kwargs=self.model_call_details,
                         result=result,
@@ -2345,9 +2350,17 @@ def _init_custom_logger_compatible_class(  # noqa: PLR0915
         _mlflow_logger = MlflowLogger()
         _in_memory_loggers.append(_mlflow_logger)
         return _mlflow_logger  # type: ignore
+    elif logging_integration == "langfuse":
+        for callback in _in_memory_loggers:
+            if isinstance(callback, LangfusePromptManagement):
+                return callback
+
+        langfuse_logger = LangfusePromptManagement()
+        _in_memory_loggers.append(langfuse_logger)
+        return langfuse_logger  # type: ignore
 
 
-def get_custom_logger_compatible_class(
+def get_custom_logger_compatible_class(  # noqa: PLR0915
     logging_integration: litellm._custom_logger_compatible_callbacks_literal,
 ) -> Optional[CustomLogger]:
     if logging_integration == "lago":
@@ -2397,6 +2410,10 @@ def get_custom_logger_compatible_class(
     elif logging_integration == "opik":
         for callback in _in_memory_loggers:
             if isinstance(callback, OpikLogger):
+                return callback
+    elif logging_integration == "langfuse":
+        for callback in _in_memory_loggers:
+            if isinstance(callback, LangfusePromptManagement):
                 return callback
     elif logging_integration == "otel":
         from litellm.integrations.opentelemetry import OpenTelemetry
