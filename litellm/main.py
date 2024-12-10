@@ -86,7 +86,6 @@ from .litellm_core_utils.streaming_chunk_builder_utils import ChunkProcessor
 from .llms import (
     aleph_alpha,
     baseten,
-    clarifai,
     cloudflare,
     maritalk,
     nlp_cloud,
@@ -111,9 +110,10 @@ from .llms.azure_text import AzureTextCompletion
 from .llms.bedrock.chat import BedrockConverseLLM, BedrockLLM
 from .llms.bedrock.embed.embedding import BedrockEmbedding
 from .llms.bedrock.image.image_handler import BedrockImageGeneration
-from .llms.cohere import chat as cohere_chat
-from .llms.cohere import completion as cohere_completion  # type: ignore
+from .llms.clarifai.chat import handler
+from .llms.cohere.completion import completion as cohere_completion  # type: ignore
 from .llms.cohere.embed import handler as cohere_embed
+from .llms.custom_httpx.llm_http_handler import BaseLLMHTTPHandler
 from .llms.custom_llm import CustomLLM, custom_chat_llm_router
 from .llms.databricks.chat.handler import DatabricksChatCompletion
 from .llms.databricks.embed.handler import DatabricksEmbeddingHandler
@@ -121,7 +121,8 @@ from .llms.groq.chat.handler import GroqChatCompletion
 from .llms.huggingface_restapi import Huggingface
 from .llms.OpenAI.audio_transcriptions import OpenAIAudioTranscription
 from .llms.OpenAI.chat.o1_handler import OpenAIO1ChatCompletion
-from .llms.OpenAI.openai import OpenAIChatCompletion, OpenAITextCompletion
+from .llms.OpenAI.completion.handler import OpenAITextCompletion
+from .llms.OpenAI.openai import OpenAIChatCompletion
 from .llms.openai_like.embedding.handler import OpenAILikeEmbeddingHandler
 from .llms.predibase import PredibaseChatCompletion
 from .llms.prompt_templates.common_utils import get_completion_messages
@@ -232,6 +233,7 @@ sagemaker_llm = SagemakerLLM()
 watsonx_chat_completion = WatsonXChatHandler()
 openai_like_embedding = OpenAILikeEmbeddingHandler()
 databricks_embedding = DatabricksEmbeddingHandler()
+base_llm_http_handler = BaseLLMHTTPHandler()
 ####### COMPLETION ENDPOINTS ################
 
 
@@ -445,6 +447,7 @@ async def acompletion(
             or custom_llm_provider == "perplexity"
             or custom_llm_provider == "groq"
             or custom_llm_provider == "nvidia_nim"
+            or custom_llm_provider == "cohere_chat"
             or custom_llm_provider == "cerebras"
             or custom_llm_provider == "sambanova"
             or custom_llm_provider == "ai21_chat"
@@ -1685,8 +1688,9 @@ def completion(  # type: ignore # noqa: PLR0915
                 or get_secret("CLARIFAI_API_BASE")
                 or "https://api.clarifai.com/v2"
             )
+            api_base = litellm.ClarifaiConfig()._convert_model_to_url(model, api_base)
             custom_prompt_dict = custom_prompt_dict or litellm.custom_prompt_dict
-            model_response = clarifai.completion(
+            model_response = handler.completion(
                 model=model,
                 messages=messages,
                 api_base=api_base,
@@ -1789,6 +1793,7 @@ def completion(  # type: ignore # noqa: PLR0915
                     headers=headers,
                     timeout=timeout,
                     client=client,
+                    custom_llm_provider=custom_llm_provider,
                 )
             if optional_params.get("stream", False) or acompletion is True:
                 ## LOGGING
@@ -1938,15 +1943,15 @@ def completion(  # type: ignore # noqa: PLR0915
             cohere_key = (
                 api_key
                 or litellm.cohere_key
-                or get_secret("COHERE_API_KEY")
-                or get_secret("CO_API_KEY")
+                or get_secret_str("COHERE_API_KEY")
+                or get_secret_str("CO_API_KEY")
                 or litellm.api_key
             )
 
             api_base = (
                 api_base
                 or litellm.api_base
-                or get_secret("COHERE_API_BASE")
+                or get_secret_str("COHERE_API_BASE")
                 or "https://api.cohere.ai/v1/chat"
             )
 
@@ -1957,32 +1962,22 @@ def completion(  # type: ignore # noqa: PLR0915
             if extra_headers is not None:
                 headers.update(extra_headers)
 
-            model_response = cohere_chat.completion(
+            response = base_llm_http_handler.completion(
                 model=model,
+                stream=stream,
                 messages=messages,
+                acompletion=acompletion,
                 api_base=api_base,
                 model_response=model_response,
-                print_verbose=print_verbose,
                 optional_params=optional_params,
                 litellm_params=litellm_params,
+                custom_llm_provider="cohere_chat",
+                timeout=timeout,
                 headers=headers,
-                logger_fn=logger_fn,
                 encoding=encoding,
                 api_key=cohere_key,
                 logging_obj=logging,  # model call logging done inside the class as we make need to modify I/O to fit aleph alpha's requirements
             )
-
-            # if "stream" in optional_params and optional_params["stream"] is True:
-            #     # don't try to access stream object,
-            #     response = CustomStreamWrapper(
-            #         model_response,
-            #         model,
-            #         custom_llm_provider="cohere_chat",
-            #         logging_obj=logging,
-            #         _response_headers=headers,
-            #     )
-            #     return response
-            response = model_response
         elif custom_llm_provider == "maritalk":
             maritalk_key = (
                 api_key
