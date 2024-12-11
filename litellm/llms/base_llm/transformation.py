@@ -9,6 +9,7 @@ from typing import (
     Any,
     AsyncIterator,
     Callable,
+    Dict,
     Iterator,
     List,
     Optional,
@@ -33,7 +34,7 @@ class BaseLLMException(Exception):
         self,
         status_code: int,
         message: str,
-        headers: Optional[httpx.Headers] = None,
+        headers: Optional[Union[Dict, httpx.Headers]] = None,
         request: Optional[httpx.Request] = None,
         response: Optional[httpx.Response] = None,
     ):
@@ -95,6 +96,16 @@ class BaseConfig(ABC):
     ) -> dict:
         pass
 
+    def get_complete_url(self, api_base: str, model: str) -> str:
+        """
+        OPTIONAL
+
+        Get the complete url for the request
+
+        Some providers need `model` in `api_base`
+        """
+        return api_base
+
     @abstractmethod
     def transform_request(
         self,
@@ -136,7 +147,7 @@ class BaseConfig(ABC):
 
     def get_model_response_iterator(
         self,
-        streaming_response: Union[Iterator[str], AsyncIterator[str]],
+        streaming_response: Union[Iterator[str], AsyncIterator[str], ModelResponse],
         sync_stream: bool,
         json_mode: Optional[bool] = False,
     ) -> Any:

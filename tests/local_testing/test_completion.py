@@ -1126,32 +1126,6 @@ def test_completion_mistral_api_modified_input():
             pytest.fail(f"Error occurred: {e}")
 
 
-@pytest.mark.asyncio
-async def test_acompletion_claude2_1():
-    try:
-        litellm.set_verbose = True
-        print("claude2.1 test request")
-        messages = [
-            {
-                "role": "system",
-                "content": "Your goal is generate a joke on the topic user gives.",
-            },
-            {"role": "user", "content": "Generate a 3 liner joke for me"},
-        ]
-        # test without max-tokens
-        response = await litellm.acompletion(model="claude-2.1", messages=messages)
-        # Add any assertions here to check the response
-        print(response)
-        print(response.usage)
-        print(response.usage.completion_tokens)
-        print(response["usage"]["completion_tokens"])
-        # print("new cost tracking")
-    except litellm.InternalServerError:
-        pytest.skip("model is overloaded.")
-    except Exception as e:
-        pytest.fail(f"Error occurred: {e}")
-
-
 # def test_completion_oobabooga():
 #     try:
 #         response = completion(
@@ -4179,26 +4153,6 @@ def test_completion_together_ai_stream():
 
 
 # test_completion_together_ai_stream()
-
-
-# Cloud flare AI tests
-@pytest.mark.skip(reason="Flaky test-cloudflare is very unstable")
-def test_completion_cloudflare():
-    try:
-        litellm.set_verbose = True
-        response = completion(
-            model="cloudflare/@cf/meta/llama-2-7b-chat-int8",
-            messages=[{"content": "what llm are you", "role": "user"}],
-            max_tokens=15,
-            num_retries=3,
-        )
-        print(response)
-
-    except Exception as e:
-        pytest.fail(f"Error occurred: {e}")
-
-
-# test_completion_cloudflare()
 
 
 def test_moderation():

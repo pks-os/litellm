@@ -2830,6 +2830,32 @@ def get_optional_params(  # noqa: PLR0915
                 else False
             ),
         )
+    elif custom_llm_provider == "anthropic_text":
+        supported_params = get_supported_openai_params(
+            model=model, custom_llm_provider=custom_llm_provider
+        )
+        optional_params = litellm.AnthropicTextConfig().map_openai_params(
+            model=model,
+            non_default_params=non_default_params,
+            optional_params=optional_params,
+            drop_params=(
+                drop_params
+                if drop_params is not None and isinstance(drop_params, bool)
+                else False
+            ),
+        )
+        _check_valid_arg(supported_params=supported_params)
+        optional_params = litellm.AnthropicTextConfig().map_openai_params(
+            model=model,
+            non_default_params=non_default_params,
+            optional_params=optional_params,
+            drop_params=(
+                drop_params
+                if drop_params is not None and isinstance(drop_params, bool)
+                else False
+            ),
+        )
+
     elif custom_llm_provider == "cohere":
         ## check if unsupported param passed in
         supported_params = get_supported_openai_params(
@@ -3274,10 +3300,16 @@ def get_optional_params(  # noqa: PLR0915
         )
         _check_valid_arg(supported_params=supported_params)
 
-        if max_tokens is not None:
-            optional_params["max_tokens"] = max_tokens
-        if stream is not None:
-            optional_params["stream"] = stream
+        optional_params = litellm.CloudflareChatConfig().map_openai_params(
+            model=model,
+            non_default_params=non_default_params,
+            optional_params=optional_params,
+            drop_params=(
+                drop_params
+                if drop_params is not None and isinstance(drop_params, bool)
+                else False
+            ),
+        )
     elif custom_llm_provider == "ollama":
         supported_params = get_supported_openai_params(
             model=model, custom_llm_provider=custom_llm_provider
@@ -3483,6 +3515,11 @@ def get_optional_params(  # noqa: PLR0915
             non_default_params=non_default_params,
             optional_params=optional_params,
             model=model,
+            drop_params=(
+                drop_params
+                if drop_params is not None and isinstance(drop_params, bool)
+                else False
+            ),
         )
     elif custom_llm_provider == "volcengine":
         supported_params = get_supported_openai_params(
@@ -3626,6 +3663,12 @@ def get_optional_params(  # noqa: PLR0915
         optional_params = litellm.IBMWatsonXAIConfig().map_openai_params(
             non_default_params=non_default_params,
             optional_params=optional_params,
+            model=model,
+            drop_params=(
+                drop_params
+                if drop_params is not None and isinstance(drop_params, bool)
+                else False
+            ),
         )
     elif custom_llm_provider == "openai":
         supported_params = get_supported_openai_params(
@@ -4202,7 +4245,7 @@ def get_api_key(llm_provider: str, dynamic_api_key: Optional[str]):
     if llm_provider == "openai" or llm_provider == "text-completion-openai":
         api_key = api_key or litellm.openai_key or get_secret("OPENAI_API_KEY")
     # anthropic
-    elif llm_provider == "anthropic":
+    elif llm_provider == "anthropic" or llm_provider == "anthropic_text":
         api_key = api_key or litellm.anthropic_key or get_secret("ANTHROPIC_API_KEY")
     # ai21
     elif llm_provider == "ai21":
@@ -6245,10 +6288,38 @@ class ProviderConfigManager:
             return litellm.ClarifaiConfig()
         elif litellm.LlmProviders.ANTHROPIC == provider:
             return litellm.AnthropicConfig()
+        elif litellm.LlmProviders.ANTHROPIC_TEXT == provider:
+            return litellm.AnthropicTextConfig()
         elif litellm.LlmProviders.VERTEX_AI == provider:
             if "claude" in model:
                 return litellm.VertexAIAnthropicConfig()
-
+        elif litellm.LlmProviders.CLOUDFLARE == provider:
+            return litellm.CloudflareChatConfig()
+        elif litellm.LlmProviders.FIREWORKS_AI == provider:
+            return litellm.FireworksAIConfig()
+        elif litellm.LlmProviders.FRIENDLIAI == provider:
+            return litellm.FriendliaiChatConfig()
+        elif litellm.LlmProviders.WATSONX == provider:
+            return litellm.IBMWatsonXChatConfig()
+        elif litellm.LlmProviders.WATSONX_TEXT == provider:
+            return litellm.IBMWatsonXAIConfig()
+        elif litellm.LlmProviders.EMPOWER == provider:
+            return litellm.EmpowerChatConfig()
+        elif litellm.LlmProviders.GITHUB == provider:
+            return litellm.GithubChatConfig()
+        elif (
+            litellm.LlmProviders.CUSTOM == provider
+            or litellm.LlmProviders.CUSTOM_OPENAI == provider
+            or litellm.LlmProviders.OPENAI_LIKE == provider
+            or litellm.LlmProviders.LITELLM_PROXY == provider
+        ):
+            return litellm.OpenAILikeChatConfig()
+        elif litellm.LlmProviders.HOSTED_VLLM == provider:
+            return litellm.HostedVLLMChatConfig()
+        elif litellm.LlmProviders.LM_STUDIO == provider:
+            return litellm.LMStudioChatConfig()
+        elif litellm.LlmProviders.GALADRIEL == provider:
+            return litellm.GaladrielChatConfig()
         return litellm.OpenAIGPTConfig()
 
 

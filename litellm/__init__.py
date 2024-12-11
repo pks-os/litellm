@@ -846,6 +846,7 @@ class LlmProviders(str, Enum):
     COHERE_CHAT = "cohere_chat"
     CLARIFAI = "clarifai"
     ANTHROPIC = "anthropic"
+    ANTHROPIC_TEXT = "anthropic_text"
     REPLICATE = "replicate"
     HUGGINGFACE = "huggingface"
     TOGETHER_AI = "together_ai"
@@ -1054,23 +1055,27 @@ ALL_LITELLM_RESPONSE_TYPES = [
 
 from .types.utils import ImageObject
 from .llms.custom_llm import CustomLLM
+from .llms.openai_like.chat.handler import OpenAILikeChatConfig
+from .llms.galadriel.chat.transformation import GaladrielChatConfig
 from .llms.huggingface_restapi import HuggingfaceConfig
+from .llms.empower.chat.transformation import EmpowerChatConfig
+from .llms.github.chat.transformation import GithubChatConfig
 from .llms.anthropic.chat.handler import AnthropicConfig
 from .llms.anthropic.experimental_pass_through.transformation import (
     AnthropicExperimentalPassThroughConfig,
 )
 from .llms.groq.stt.transformation import GroqSTTConfig
-from .llms.anthropic.completion import AnthropicTextConfig
+from .llms.anthropic.completion.transformation import AnthropicTextConfig
 from .llms.databricks.chat.transformation import DatabricksConfig
 from .llms.databricks.embed.transformation import DatabricksEmbeddingConfig
 from .llms.predibase import PredibaseConfig
 from .llms.replicate import ReplicateConfig
 from .llms.cohere.completion.transformation import CohereTextConfig as CohereConfig
 from .llms.clarifai.chat.transformation import ClarifaiConfig
+from .llms.cloudflare.chat.transformation import CloudflareChatConfig
 from .llms.ai21.completion import AI21Config
 from .llms.ai21.chat import AI21ChatConfig
 from .llms.together_ai.chat import TogetherAIConfig
-from .llms.cloudflare import CloudflareConfig
 from .llms.palm import PalmConfig
 from .llms.gemini import GeminiConfig
 from .llms.nlp_cloud import NLPCloudConfig
@@ -1162,10 +1167,11 @@ nvidiaNimEmbeddingConfig = NvidiaNimEmbeddingConfig()
 from .llms.cerebras.chat import CerebrasConfig
 from .llms.sambanova.chat import SambanovaConfig
 from .llms.ai21.chat import AI21ChatConfig
-from .llms.fireworks_ai.chat.fireworks_ai_transformation import FireworksAIConfig
+from .llms.fireworks_ai.chat.transformation import FireworksAIConfig
 from .llms.fireworks_ai.embed.fireworks_ai_transformation import (
     FireworksAIEmbeddingConfig,
 )
+from .llms.friendliai.chat.transformation import FriendliaiChatConfig
 from .llms.jina_ai.embedding.transformation import JinaAIEmbeddingConfig
 from .llms.xai.chat.transformation import XAIChatConfig
 from .llms.volcengine import VolcEngineConfig
@@ -1182,7 +1188,7 @@ from .llms.lm_studio.chat.transformation import LMStudioChatConfig
 from .llms.lm_studio.embed.transformation import LmStudioEmbeddingConfig
 from .llms.perplexity.chat.transformation import PerplexityChatConfig
 from .llms.azure.chat.o1_transformation import AzureOpenAIO1Config
-from .llms.watsonx.completion.handler import IBMWatsonXAIConfig
+from .llms.watsonx.completion.transformation import IBMWatsonXAIConfig
 from .llms.watsonx.chat.transformation import IBMWatsonXChatConfig
 from .main import *  # type: ignore
 from .integrations import *
