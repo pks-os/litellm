@@ -17,7 +17,7 @@ from litellm.llms.base_llm.transformation import (
     BaseLLMException,
     LiteLLMLoggingObj,
 )
-from litellm.llms.prompt_templates.factory import custom_prompt, prompt_factory
+from litellm.litellm_core_utils.prompt_templates.factory import custom_prompt, prompt_factory
 from litellm.types.llms.openai import AllMessageValues
 from litellm.types.utils import (
     ChatCompletionToolCallChunk,
@@ -180,6 +180,7 @@ class AnthropicTextConfig(BaseConfig):
         request_data: dict,
         messages: List[AllMessageValues],
         optional_params: dict,
+        litellm_params: dict,
         encoding: str,
         api_key: Optional[str] = None,
         json_mode: Optional[bool] = None,
