@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 import litellm
 from litellm import (
+    _custom_logger_compatible_callbacks_literal,
     json_logs,
     log_raw_request_response,
     turn_off_message_logging,
@@ -41,6 +42,7 @@ from litellm.types.utils import (
     CallTypes,
     EmbeddingResponse,
     ImageResponse,
+    LiteLLMLoggingBaseClass,
     ModelResponse,
     StandardCallbackDynamicParams,
     StandardLoggingAdditionalHeaders,
@@ -190,7 +192,7 @@ in_memory_trace_id_cache = ServiceTraceIDCache()
 in_memory_dynamic_logger_cache = DynamicLoggingCache()
 
 
-class Logging:
+class Logging(LiteLLMLoggingBaseClass):
     global supabaseClient, promptLayerLogger, weightsBiasesLogger, logfireLogger, capture_exception, add_breadcrumb, lunaryLogger, logfireLogger, prometheusLogger, slack_app
     custom_pricing: bool = False
     stream_options = None
@@ -2142,7 +2144,7 @@ def set_callbacks(callback_list, function_id=None):  # noqa: PLR0915
 
 
 def _init_custom_logger_compatible_class(  # noqa: PLR0915
-    logging_integration: litellm._custom_logger_compatible_callbacks_literal,
+    logging_integration: _custom_logger_compatible_callbacks_literal,
     internal_usage_cache: Optional[DualCache],
     llm_router: Optional[
         Any
@@ -2362,7 +2364,7 @@ def _init_custom_logger_compatible_class(  # noqa: PLR0915
 
 
 def get_custom_logger_compatible_class(  # noqa: PLR0915
-    logging_integration: litellm._custom_logger_compatible_callbacks_literal,
+    logging_integration: _custom_logger_compatible_callbacks_literal,
 ) -> Optional[CustomLogger]:
     if logging_integration == "lago":
         for callback in _in_memory_loggers:
@@ -2584,6 +2586,15 @@ class StandardLoggingPayloadSetup:
                     clean_metadata["user_api_key_hash"] = metadata.get(
                         "user_api_key"
                     )  # this is the hash
+            _potential_requester_metadata = metadata.get(
+                "metadata", None
+            )  # check if user passed metadata in the sdk request - e.g. metadata for langsmith logging - https://docs.litellm.ai/docs/observability/langsmith_integration#set-langsmith-fields
+            if (
+                clean_metadata["requester_metadata"] is None
+                and _potential_requester_metadata is not None
+                and isinstance(_potential_requester_metadata, dict)
+            ):
+                clean_metadata["requester_metadata"] = _potential_requester_metadata
         return clean_metadata
 
     @staticmethod
