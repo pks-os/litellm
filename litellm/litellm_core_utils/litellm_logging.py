@@ -67,6 +67,7 @@ from litellm.utils import (
 from ..integrations.argilla import ArgillaLogger
 from ..integrations.arize_ai import ArizeLogger
 from ..integrations.athina import AthinaLogger
+from ..integrations.azure_storage.azure_storage import AzureBlobStorageLogger
 from ..integrations.braintrust_logging import BraintrustLogger
 from ..integrations.datadog.datadog import DataDogLogger
 from ..integrations.datadog.datadog_llm_obs import DataDogLLMObsLogger
@@ -93,6 +94,7 @@ from ..integrations.supabase import Supabase
 from ..integrations.traceloop import TraceloopLogger
 from ..integrations.weights_biases import WeightsBiasesLogger
 from .exception_mapping_utils import _get_response_headers
+from .llm_response_utils.get_formatted_prompt import get_formatted_prompt
 from .logging_utils import _assemble_complete_response_from_streaming_chunks
 
 try:
@@ -224,6 +226,7 @@ class Logging(LiteLLMLoggingBaseClass):
         ] = None,
         kwargs: Optional[Dict] = None,
     ):
+        _input: Optional[str] = messages  # save original value of messages
         if messages is not None:
             if isinstance(messages, str):
                 messages = [
@@ -250,7 +253,6 @@ class Logging(LiteLLMLoggingBaseClass):
         self.sync_streaming_chunks: List[Any] = (
             []
         )  # for generating complete stream response
-        self.model_call_details: Dict[Any, Any] = {}
 
         # Initialize dynamic callbacks
         self.dynamic_input_callbacks: Optional[
@@ -281,9 +283,10 @@ class Logging(LiteLLMLoggingBaseClass):
         self.completion_start_time: Optional[datetime.datetime] = None
         self._llm_caching_handler: Optional[LLMCachingHandler] = None
 
-        self.model_call_details = {
+        self.model_call_details: Dict[str, Any] = {
             "litellm_trace_id": litellm_trace_id,
             "litellm_call_id": litellm_call_id,
+            "input": _input,
         }
 
     def process_dynamic_callbacks(self):
@@ -733,6 +736,11 @@ class Logging(LiteLLMLoggingBaseClass):
             )
         )
 
+        prompt = ""  # use for tts cost calc
+        _input = self.model_call_details.get("input", None)
+        if _input is not None and isinstance(_input, str):
+            prompt = _input
+
         if cache_hit is None:
             cache_hit = self.model_call_details.get("cache_hit", False)
 
@@ -750,6 +758,7 @@ class Logging(LiteLLMLoggingBaseClass):
                 "call_type": self.call_type,
                 "optional_params": self.optional_params,
                 "custom_pricing": custom_pricing,
+                "prompt": prompt,
             }
         except Exception as e:  # error creating kwargs for cost calculation
             self.model_call_details["response_cost_failure_debug_information"] = (
@@ -764,7 +773,6 @@ class Logging(LiteLLMLoggingBaseClass):
             response_cost = litellm.response_cost_calculator(
                 **response_cost_calculator_kwargs
             )
-
             return response_cost
         except Exception as e:  # error calculating cost
             self.model_call_details["response_cost_failure_debug_information"] = (
@@ -2226,6 +2234,14 @@ def _init_custom_logger_compatible_class(  # noqa: PLR0915
         _gcs_bucket_logger = GCSBucketLogger()
         _in_memory_loggers.append(_gcs_bucket_logger)
         return _gcs_bucket_logger  # type: ignore
+    elif logging_integration == "azure_storage":
+        for callback in _in_memory_loggers:
+            if isinstance(callback, AzureBlobStorageLogger):
+                return callback  # type: ignore
+
+        _azure_storage_logger = AzureBlobStorageLogger()
+        _in_memory_loggers.append(_azure_storage_logger)
+        return _azure_storage_logger  # type: ignore
     elif logging_integration == "opik":
         for callback in _in_memory_loggers:
             if isinstance(callback, OpikLogger):
@@ -2409,6 +2425,10 @@ def get_custom_logger_compatible_class(  # noqa: PLR0915
     elif logging_integration == "gcs_bucket":
         for callback in _in_memory_loggers:
             if isinstance(callback, GCSBucketLogger):
+                return callback
+    elif logging_integration == "azure_storage":
+        for callback in _in_memory_loggers:
+            if isinstance(callback, AzureBlobStorageLogger):
                 return callback
     elif logging_integration == "opik":
         for callback in _in_memory_loggers:
