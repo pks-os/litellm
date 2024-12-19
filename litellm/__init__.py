@@ -34,6 +34,7 @@ from litellm.proxy._types import (
     LiteLLM_UpperboundKeyGenerateParams,
 )
 from litellm.types.utils import StandardKeyGenerationConfig, LlmProviders
+from litellm.integrations.custom_logger import CustomLogger
 import httpx
 import dotenv
 from enum import Enum
@@ -75,7 +76,9 @@ logged_real_time_event_types: Optional[Union[List[str], Literal["*"]]] = None
 _known_custom_logger_compatible_callbacks: List = list(
     get_args(_custom_logger_compatible_callbacks_literal)
 )
-callbacks: List[Union[Callable, _custom_logger_compatible_callbacks_literal]] = []
+callbacks: List[
+    Union[Callable, _custom_logger_compatible_callbacks_literal, CustomLogger]
+] = []
 langfuse_default_tags: Optional[List[str]] = None
 langsmith_batch_size: Optional[int] = None
 argilla_batch_size: Optional[int] = None
@@ -1083,6 +1086,7 @@ from .llms.openai.openai import OpenAIConfig, MistralEmbeddingConfig
 from .llms.deepinfra.chat.transformation import DeepInfraConfig
 from litellm.llms.openai.completion.transformation import OpenAITextCompletionConfig
 from .llms.groq.chat.transformation import GroqChatConfig
+from .llms.voyage.embedding.transformation import VoyageEmbeddingConfig
 from .llms.azure_ai.chat.transformation import AzureAIStudioConfig
 from .llms.mistral.mistral_chat_transformation import MistralConfig
 from .llms.openai.chat.o1_transformation import (
