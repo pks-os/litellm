@@ -343,7 +343,7 @@ async def test_aaavertex_ai_anthropic_async_streaming():
 
 
 @pytest.mark.flaky(retries=3, delay=1)
-def test_vertex_ai():
+def test_avertex_ai():
     import random
 
     litellm.num_retries = 3
@@ -394,7 +394,7 @@ def test_vertex_ai():
 
 
 @pytest.mark.flaky(retries=3, delay=1)
-def test_vertex_ai_stream():
+def test_avertex_ai_stream():
     load_vertex_ai_credentials()
     litellm.set_verbose = True
     litellm.vertex_project = "adroit-crow-413218"
@@ -1805,7 +1805,7 @@ async def test_gemini_pro_function_calling_streaming(sync_mode):
 
             for chunk in response:
                 chunks.append(chunk)
-                assert isinstance(chunk, litellm.ModelResponse)
+                assert isinstance(chunk, litellm.ModelResponseStream)
         else:
             response = await litellm.acompletion(**data)
             print(f"completion: {response}")
@@ -1815,7 +1815,7 @@ async def test_gemini_pro_function_calling_streaming(sync_mode):
             async for chunk in response:
                 print(f"chunk: {chunk}")
                 chunks.append(chunk)
-                assert isinstance(chunk, litellm.ModelResponse)
+                assert isinstance(chunk, litellm.ModelResponseStream)
 
         complete_response = litellm.stream_chunk_builder(chunks=chunks)
         assert (
