@@ -25,7 +25,9 @@ from litellm.llms.vertex_ai.batches.handler import VertexAIBatchPrediction
 from litellm.secret_managers.main import get_secret_str
 from litellm.types.llms.openai import Batch, CreateBatchRequest, RetrieveBatchRequest
 from litellm.types.router import GenericLiteLLMParams
-from litellm.utils import supports_httpx_timeout
+from litellm.utils import client, supports_httpx_timeout
+
+from .batch_utils import batches_async_logging
 
 ####### ENVIRONMENT VARIABLES ###################
 openai_batches_instance = OpenAIBatchesAPI()
@@ -34,6 +36,7 @@ vertex_ai_batches_instance = VertexAIBatchPrediction(gcs_bucket_name="")
 #################################################
 
 
+@client
 async def acreate_batch(
     completion_window: Literal["24h"],
     endpoint: Literal["/v1/chat/completions", "/v1/embeddings", "/v1/completions"],
@@ -70,16 +73,29 @@ async def acreate_batch(
         ctx = contextvars.copy_context()
         func_with_context = partial(ctx.run, func)
         init_response = await loop.run_in_executor(None, func_with_context)
+
         if asyncio.iscoroutine(init_response):
             response = await init_response
         else:
-            response = init_response  # type: ignore
+            response = init_response
+
+        # Start async logging job
+        if response is not None:
+            asyncio.create_task(
+                batches_async_logging(
+                    logging_obj=kwargs.get("litellm_logging_obj", None),
+                    batch_id=response.id,
+                    custom_llm_provider=custom_llm_provider,
+                    **kwargs,
+                )
+            )
 
         return response
     except Exception as e:
         raise e
 
 
+@client
 def create_batch(
     completion_window: Literal["24h"],
     endpoint: Literal["/v1/chat/completions", "/v1/embeddings", "/v1/completions"],
@@ -236,7 +252,7 @@ def create_batch(
 
 async def aretrieve_batch(
     batch_id: str,
-    custom_llm_provider: Literal["openai", "azure"] = "openai",
+    custom_llm_provider: Literal["openai", "azure", "vertex_ai"] = "openai",
     metadata: Optional[Dict[str, str]] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     extra_body: Optional[Dict[str, str]] = None,
@@ -277,7 +293,7 @@ async def aretrieve_batch(
 
 def retrieve_batch(
     batch_id: str,
-    custom_llm_provider: Literal["openai", "azure"] = "openai",
+    custom_llm_provider: Literal["openai", "azure", "vertex_ai"] = "openai",
     metadata: Optional[Dict[str, str]] = None,
     extra_headers: Optional[Dict[str, str]] = None,
     extra_body: Optional[Dict[str, str]] = None,
@@ -550,7 +566,6 @@ def list_batches(
         return response
     except Exception as e:
         raise e
-    pass
 
 
 def cancel_batch():

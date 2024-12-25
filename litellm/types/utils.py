@@ -169,6 +169,8 @@ class CallTypes(Enum):
     rerank = "rerank"
     arerank = "arerank"
     arealtime = "_arealtime"
+    create_batch = "create_batch"
+    acreate_batch = "acreate_batch"
     pass_through = "pass_through_endpoint"
 
 
@@ -190,6 +192,9 @@ CallTypesLiteral = Literal[
     "rerank",
     "arerank",
     "_arealtime",
+    "create_batch",
+    "acreate_batch",
+    "pass_through_endpoint",
 ]
 
 
@@ -1501,6 +1506,7 @@ class StandardLoggingPayload(TypedDict):
     id: str
     trace_id: str  # Trace multiple LLM calls belonging to same overall request (e.g. fallbacks/retries)
     call_type: str
+    stream: Optional[bool]
     response_cost: float
     response_cost_failure_debug_info: Optional[
         StandardLoggingModelCostFailureDebugInformation
@@ -1594,6 +1600,7 @@ all_litellm_params = [
     "text_completion",
     "caching",
     "mock_response",
+    "mock_timeout",
     "api_key",
     "api_version",
     "prompt_id",

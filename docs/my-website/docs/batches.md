@@ -5,6 +5,12 @@ import TabItem from '@theme/TabItem';
 
 Covers Batches, Files
 
+| Feature | Supported | Notes | 
+|-------|-------|-------|
+| Supported Providers | OpenAI, Azure, Vertex | - |
+| ✨ Cost Tracking | ✅ | LiteLLM Enterprise only |
+| Logging | ✅ | Works across all logging integrations |
+
 ## Quick Start 
 
 - Create File for Batch Completion

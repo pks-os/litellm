@@ -34,7 +34,11 @@ from litellm.litellm_core_utils.redact_messages import (
     redact_message_input_output_from_custom_logger,
     redact_message_input_output_from_logging,
 )
-from litellm.types.llms.openai import AllMessageValues, HttpxBinaryResponseContent
+from litellm.types.llms.openai import (
+    AllMessageValues,
+    Batch,
+    HttpxBinaryResponseContent,
+)
 from litellm.types.rerank import RerankResponse
 from litellm.types.router import SPECIAL_MODEL_INFO_PARAMS
 from litellm.types.utils import (
@@ -749,6 +753,7 @@ class Logging(LiteLLMLoggingBaseClass):
             TextCompletionResponse,
             HttpxBinaryResponseContent,
             RerankResponse,
+            Batch,
         ],
         cache_hit: Optional[bool] = None,
     ) -> Optional[float]:
@@ -865,6 +870,7 @@ class Logging(LiteLLMLoggingBaseClass):
                     or isinstance(result, TextCompletionResponse)
                     or isinstance(result, HttpxBinaryResponseContent)  # tts
                     or isinstance(result, RerankResponse)
+                    or isinstance(result, Batch)
                 ):
                     ## RESPONSE COST ##
                     self.model_call_details["response_cost"] = (
@@ -2955,11 +2961,19 @@ def get_standard_logging_object_payload(
             kwargs=kwargs,
         )
 
+        stream: Optional[bool] = None
+        if (
+            kwargs.get("complete_streaming_response") is not None
+            or kwargs.get("async_complete_streaming_response") is not None
+        ):
+            stream = True
+
         payload: StandardLoggingPayload = StandardLoggingPayload(
             id=str(id),
             trace_id=kwargs.get("litellm_trace_id"),  # type: ignore
             call_type=call_type or "",
             cache_hit=cache_hit,
+            stream=stream,
             status=status,
             saved_cache_cost=saved_cache_cost,
             startTime=start_time_float,
