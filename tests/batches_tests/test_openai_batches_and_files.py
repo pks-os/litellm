@@ -12,6 +12,7 @@ load_dotenv()
 sys.path.insert(
     0, os.path.abspath("../..")
 )  # Adds the parent directory to the system-path
+
 import logging
 import time
 
@@ -78,9 +79,6 @@ async def test_create_batch(provider):
     2. Create Batch Request
     3. Retrieve the specific batch
     """
-    custom_logger = TestCustomLogger()
-    litellm.callbacks = [custom_logger, "datadog"]
-
     if provider == "azure":
         # Don't have anymore Azure Quota
         return
@@ -112,12 +110,6 @@ async def test_create_batch(provider):
     print("response from litellm.create_batch=", create_batch_response)
     await asyncio.sleep(6)
 
-    # Assert that the create batch event is logged on CustomLogger
-    assert custom_logger.standard_logging_object is not None
-    print(
-        "standard_logging_object=",
-        json.dumps(custom_logger.standard_logging_object, indent=4),
-    )
     assert (
         create_batch_response.id is not None
     ), f"Failed to create batch, expected a non null batch_id but got {create_batch_response.id}"
@@ -152,6 +144,13 @@ async def test_create_batch(provider):
     with open(result_file_name, "wb") as file:
         file.write(result)
 
+    # Cancel Batch
+    cancel_batch_response = await litellm.acancel_batch(
+        batch_id=create_batch_response.id,
+        custom_llm_provider=provider,
+    )
+    print("cancel_batch_response=", cancel_batch_response)
+
     pass
 
 
@@ -170,7 +169,7 @@ class TestCustomLogger(CustomLogger):
         self.standard_logging_object = kwargs["standard_logging_object"]
 
 
-@pytest.mark.parametrize("provider", ["openai"])  #  "azure"
+@pytest.mark.parametrize("provider", ["azure", "openai"])  #  "azure"
 @pytest.mark.asyncio()
 @pytest.mark.flaky(retries=3, delay=1)
 async def test_async_create_batch(provider):
@@ -180,9 +179,6 @@ async def test_async_create_batch(provider):
     3. Retrieve the specific batch
     """
     print("Testing async create batch")
-    if provider == "azure":
-        # Don't have anymore Azure Quota
-        return
 
     custom_logger = TestCustomLogger()
     litellm.callbacks = [custom_logger, "datadog"]
@@ -203,12 +199,18 @@ async def test_async_create_batch(provider):
         batch_input_file_id is not None
     ), "Failed to create file, expected a non null file_id but got {batch_input_file_id}"
 
+    extra_metadata_field = {
+        "user_api_key_alias": "special_api_key_alias",
+        "user_api_key_team_alias": "special_team_alias",
+    }
     create_batch_response = await litellm.acreate_batch(
         completion_window="24h",
         endpoint="/v1/chat/completions",
         input_file_id=batch_input_file_id,
         custom_llm_provider=provider,
         metadata={"key1": "value1", "key2": "value2"},
+        # litellm specific param - used for logging metadata on logging callback
+        litellm_metadata=extra_metadata_field,
     )
 
     print("response from litellm.create_batch=", create_batch_response)
@@ -227,6 +229,18 @@ async def test_async_create_batch(provider):
     await asyncio.sleep(6)
     # Assert that the create batch event is logged on CustomLogger
     assert custom_logger.standard_logging_object is not None
+    print(
+        "standard_logging_object=",
+        json.dumps(custom_logger.standard_logging_object, indent=4, default=str),
+    )
+    assert (
+        custom_logger.standard_logging_object["metadata"]["user_api_key_alias"]
+        == extra_metadata_field["user_api_key_alias"]
+    )
+    assert (
+        custom_logger.standard_logging_object["metadata"]["user_api_key_team_alias"]
+        == extra_metadata_field["user_api_key_team_alias"]
+    )
 
     retrieved_batch = await litellm.aretrieve_batch(
         batch_id=create_batch_response.id, custom_llm_provider=provider
@@ -275,17 +289,30 @@ async def test_async_create_batch(provider):
     with open(result_file_name, "wb") as file:
         file.write(file_content.content)
 
+    # Cancel Batch
+    cancel_batch_response = await litellm.acancel_batch(
+        batch_id=create_batch_response.id,
+        custom_llm_provider=provider,
+    )
+    print("cancel_batch_response=", cancel_batch_response)
 
-def test_retrieve_batch():
-    pass
 
-
-def test_cancel_batch():
-    pass
-
-
-def test_list_batch():
-    pass
+def cleanup_azure_files():
+    """
+    Delete all files for Azure - helper for when we run out of Azure Files Quota
+    """
+    azure_files = litellm.file_list(
+        custom_llm_provider="azure",
+    )
+    print("azure_files=", azure_files)
+    for _file in azure_files:
+        print("deleting file=", _file)
+        delete_file_response = litellm.file_delete(
+            file_id=_file.id,
+            custom_llm_provider="azure",
+        )
+        print("delete_file_response=", delete_file_response)
+        assert delete_file_response.id == _file.id
 
 
 @pytest.mark.asyncio
