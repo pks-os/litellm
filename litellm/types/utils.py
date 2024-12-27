@@ -122,6 +122,7 @@ class ModelInfoBase(TypedDict, total=False):
     supports_assistant_prefill: Optional[bool]
     supports_prompt_caching: Optional[bool]
     supports_audio_input: Optional[bool]
+    supports_embedding_image_input: Optional[bool]
     supports_audio_output: Optional[bool]
     supports_pdf_input: Optional[bool]
     tpm: Optional[int]
@@ -1512,6 +1513,7 @@ class StandardLoggingPayload(TypedDict):
         StandardLoggingModelCostFailureDebugInformation
     ]
     status: StandardLoggingPayloadStatus
+    custom_llm_provider: Optional[str]
     total_tokens: int
     prompt_tokens: int
     completion_tokens: int
