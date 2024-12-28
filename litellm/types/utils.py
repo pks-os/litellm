@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, PrivateAttr
 from typing_extensions import Callable, Dict, Required, TypedDict, override
 
 from ..litellm_core_utils.core_helpers import map_finish_reason
+from .guardrails import GuardrailEventHooks
 from .llms.openai import (
     ChatCompletionToolCallChunk,
     ChatCompletionUsageBlock,
@@ -1500,6 +1501,13 @@ class StandardLoggingPayloadErrorInformation(TypedDict, total=False):
     llm_provider: Optional[str]
 
 
+class StandardLoggingGuardrailInformation(TypedDict, total=False):
+    guardrail_name: Optional[str]
+    guardrail_mode: Optional[GuardrailEventHooks]
+    guardrail_response: Optional[Union[dict, str]]
+    guardrail_status: Literal["success", "failure"]
+
+
 StandardLoggingPayloadStatus = Literal["success", "failure"]
 
 
@@ -1539,6 +1547,7 @@ class StandardLoggingPayload(TypedDict):
     error_information: Optional[StandardLoggingPayloadErrorInformation]
     model_parameters: dict
     hidden_params: StandardLoggingHiddenParams
+    guardrail_information: Optional[StandardLoggingGuardrailInformation]
 
 
 from typing import AsyncIterator, Iterator
@@ -1694,17 +1703,25 @@ class StandardKeyGenerationConfig(TypedDict, total=False):
     personal_key_generation: PersonalUIKeyGenerationConfig
 
 
-class GenericBudgetInfo(BaseModel):
-    time_period: str  # e.g., '1d', '30d'
-    budget_limit: float
-
-
-GenericBudgetConfigType = Dict[str, GenericBudgetInfo]
-
-
 class BudgetConfig(BaseModel):
-    max_budget: float
-    budget_duration: str
+    max_budget: Optional[float] = None
+    budget_duration: Optional[str] = None
+    tpm_limit: Optional[int] = None
+    rpm_limit: Optional[int] = None
+
+    def __init__(self, **data: Any) -> None:
+        # Map time_period to budget_duration if present
+        if "time_period" in data:
+            data["budget_duration"] = data.pop("time_period")
+
+        # Map budget_limit to max_budget if present
+        if "budget_limit" in data:
+            data["max_budget"] = data.pop("budget_limit")
+
+        super().__init__(**data)
+
+
+GenericBudgetConfigType = Dict[str, BudgetConfig]
 
 
 class LlmProviders(str, Enum):

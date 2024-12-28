@@ -11,30 +11,24 @@ model_list:
     litellm_params:
       model: bedrock/*
 
-
 guardrails:
   - guardrail_name: "bedrock-pre-guard"
     litellm_params:
       guardrail: bedrock  # supported values: "aporia", "bedrock", "lakera"
       mode: "during_call"
+      guardrailIdentifier: ff6ujrregl1q # your guardrail ID on bedrock
+      guardrailVersion: "DRAFT"         # your guardrail version on bedrock
+      mode: "post_call"
       guardrailIdentifier: ff6ujrregl1q
       guardrailVersion: "DRAFT"
+    guardrail_info:
+      params:
+        - name: "toxicity_score"
+          type: "float"
+          description: "Score between 0-1 indicating content toxicity level"
+        - name: "pii_detection"
+          type: "boolean"
 
-# for /files endpoints
-# For /fine_tuning/jobs endpoints
-finetune_settings:
-  - custom_llm_provider: azure
-    api_base: os.environ/AZURE_BATCHES_API_BASE
-    api_key: os.environ/AZURE_BATCHES_API_KEY
-    api_version: "2024-05-01-preview"
-  - custom_llm_provider: openai
-    api_key: os.environ/OPENAI_API_KEY
 
-# for /files endpoints
-files_settings:
-  - custom_llm_provider: azure
-    api_base: os.environ/AZURE_BATCHES_API_BASE
-    api_key: os.environ/AZURE_BATCHES_API_KEY
-    api_version: "2024-05-01-preview"
-  - custom_llm_provider: openai
-    api_key: os.environ/OPENAI_API_KEY
+litellm_settings:
+  callbacks: ["datadog"]

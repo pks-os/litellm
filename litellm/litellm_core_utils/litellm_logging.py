@@ -2327,8 +2327,11 @@ def _init_custom_logger_compatible_class(  # noqa: PLR0915
         for callback in _in_memory_loggers:
             if isinstance(callback, OpenTelemetry):
                 return callback  # type: ignore
-
-        otel_logger = OpenTelemetry()
+        otel_logger = OpenTelemetry(
+            **_get_custom_logger_settings_from_proxy_server(
+                callback_name=logging_integration
+            )
+        )
         _in_memory_loggers.append(otel_logger)
         return otel_logger  # type: ignore
 
@@ -2542,6 +2545,23 @@ def get_custom_logger_compatible_class(  # noqa: PLR0915
                 return callback
 
     return None
+
+
+def _get_custom_logger_settings_from_proxy_server(callback_name: str) -> Dict:
+    """
+    Get the settings for a custom logger from the proxy server config.yaml
+
+    Proxy server config.yaml defines callback_settings as:
+
+    callback_settings:
+        otel:
+            message_logging: False
+    """
+    from litellm.proxy.proxy_server import callback_settings
+
+    if callback_settings:
+        return dict(callback_settings.get(callback_name, {}))
+    return {}
 
 
 def use_custom_pricing_for_model(litellm_params: Optional[dict]) -> bool:
@@ -3017,6 +3037,9 @@ def get_standard_logging_object_payload(
             error_information=error_information,
             response_cost_failure_debug_info=kwargs.get(
                 "response_cost_failure_debug_information"
+            ),
+            guardrail_information=metadata.get(
+                "standard_logging_guardrail_information", None
             ),
         )
 
