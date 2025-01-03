@@ -44,10 +44,10 @@ from enum import Enum
 litellm_mode = os.getenv("LITELLM_MODE", "DEV")  # "PRODUCTION", "DEV"
 if litellm_mode == "DEV":
     dotenv.load_dotenv()
-#############################################
+###############################################
 if set_verbose == True:
     _turn_on_debug()
-#############################################
+###############################################
 ### Callbacks /Logging / Success / Failure Handlers #####
 input_callback: List[Union[str, Callable]] = []
 success_callback: List[Union[str, Callable]] = []
@@ -308,7 +308,7 @@ tag_budget_config: Optional[Dict[str, BudgetConfig]] = None
 max_end_user_budget: Optional[float] = None
 disable_end_user_cost_tracking: Optional[bool] = None
 disable_end_user_cost_tracking_prometheus_only: Optional[bool] = None
-custom_prometheus_metadata_labels: Optional[List[str]] = None
+custom_prometheus_metadata_labels: List[str] = []
 #### REQUEST PRIORITIZATION ####
 priority_reservation: Optional[Dict[str, float]] = None
 #### RELIABILITY ####
