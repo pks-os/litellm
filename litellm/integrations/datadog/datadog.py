@@ -267,6 +267,7 @@ class DataDogLogger(CustomBatchLogger):
             status = DataDogStatus.ERROR
 
         # Build the initial payload
+        self.truncate_standard_logging_payload_content(standard_logging_object)
         json_payload = json.dumps(standard_logging_object, default=str)
 
         verbose_logger.debug("Datadog: Logger - Logging payload = %s", json_payload)
