@@ -874,3 +874,110 @@ async def test_langfuse_trace_id():
     assert returned_trace_id == int(
         litellm_logging_obj._get_trace_id(service_name="langfuse")
     )
+
+
+@pytest.mark.asyncio
+async def test_print_alerting_payload_warning():
+    """
+    Test if alerts are printed to verbose logger when log_to_console=True
+    """
+    litellm.set_verbose = True
+    from litellm._logging import verbose_proxy_logger
+    from litellm.integrations.SlackAlerting.batching_handler import send_to_webhook
+    import logging
+
+    # Create a string buffer to capture log output
+    log_stream = io.StringIO()
+    handler = logging.StreamHandler(log_stream)
+    verbose_proxy_logger.addHandler(handler)
+    verbose_proxy_logger.setLevel(logging.WARNING)
+
+    # Create SlackAlerting instance with log_to_console=True
+    slack_alerting = SlackAlerting(
+        alerting_threshold=0.0000001,
+        alerting=["slack"],
+        alert_types=[AlertType.llm_exceptions],
+        internal_usage_cache=DualCache(),
+    )
+    slack_alerting.alerting_args.log_to_console = True
+
+    test_payload = {"text": "Test alert message"}
+
+    # Send an alert
+    with patch.object(
+        slack_alerting.async_http_handler, "post", new=AsyncMock()
+    ) as mock_post:
+        await send_to_webhook(
+            slackAlertingInstance=slack_alerting,
+            item={
+                "url": "https://example.com",
+                "headers": {"Content-Type": "application/json"},
+                "payload": {"text": "Test alert message"},
+            },
+            count=1,
+        )
+
+    # Check if the payload was logged
+    log_output = log_stream.getvalue()
+    print(log_output)
+    assert "Test alert message" in log_output
+
+    # Clean up
+    verbose_proxy_logger.removeHandler(handler)
+    log_stream.close()
+
+
+@pytest.mark.parametrize("report_type", ["weekly", "monthly"])
+@pytest.mark.asyncio
+async def test_spend_report_cache(report_type):
+    """
+    Test that spend reports are only sent once within their period
+    """
+    # Mock prisma client response
+    mock_spend_data = [
+        {"team_alias": "team1", "total_spend": 100.0},
+        {"team_alias": "team2", "total_spend": 200.0},
+    ]
+
+    mock_tag_data = [
+        {"individual_request_tag": "tag1", "total_spend": 150.0},
+        {"individual_request_tag": "tag2", "total_spend": 150.0},
+    ]
+
+    with patch("litellm.proxy.proxy_server.prisma_client") as mock_prisma:
+        # Setup mock for database query
+        mock_prisma.db.query_raw = AsyncMock(
+            side_effect=[mock_spend_data, mock_tag_data]
+        )
+
+        slack_alerting = SlackAlerting(
+            alerting=["webhook"], internal_usage_cache=DualCache()
+        )
+
+        user_info = CallInfo(
+            token="test_token",
+            spend=100,
+            max_budget=1000,
+            user_id="test@test.com",
+            user_email="test@test.com",
+            key_alias="test-key",
+        )
+
+        with patch.object(
+            slack_alerting, "send_alert", new=AsyncMock()
+        ) as mock_send_alert:
+            # First call should send alert
+            if report_type == "weekly":
+                await slack_alerting.send_weekly_spend_report()
+            else:
+                await slack_alerting.send_monthly_spend_report()
+
+            mock_send_alert.assert_called_once()
+            mock_send_alert.reset_mock()
+
+            # Second call should not send alert (cached)
+            if report_type == "weekly":
+                await slack_alerting.send_weekly_spend_report()
+            else:
+                await slack_alerting.send_monthly_spend_report()
+            mock_send_alert.assert_not_called()
