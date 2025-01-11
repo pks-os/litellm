@@ -133,6 +133,7 @@ from litellm.types.utils import (
     Function,
     ImageResponse,
     LlmProviders,
+    LlmProvidersSet,
     Message,
     ModelInfo,
     ModelInfoBase,
@@ -2034,6 +2035,8 @@ def get_litellm_params(
     litellm_metadata: Optional[dict] = None,
     disable_add_transform_inline_image_block: Optional[bool] = None,
     drop_params: Optional[bool] = None,
+    prompt_id: Optional[str] = None,
+    prompt_variables: Optional[dict] = None,
 ):
     litellm_params = {
         "acompletion": acompletion,
@@ -2068,6 +2071,8 @@ def get_litellm_params(
         "litellm_metadata": litellm_metadata,
         "disable_add_transform_inline_image_block": disable_add_transform_inline_image_block,
         "drop_params": drop_params,
+        "prompt_id": prompt_id,
+        "prompt_variables": prompt_variables,
     }
     return litellm_params
 
@@ -4104,9 +4109,7 @@ def _get_model_info_helper(  # noqa: PLR0915
                 ):
                     _model_info = None
 
-            if custom_llm_provider and custom_llm_provider in [
-                provider.value for provider in LlmProviders
-            ]:
+            if custom_llm_provider and custom_llm_provider in LlmProvidersSet:
                 # Check if the provider string exists in LlmProviders enum
                 provider_config = ProviderConfigManager.get_provider_model_info(
                     model=model, provider=LlmProviders(custom_llm_provider)
