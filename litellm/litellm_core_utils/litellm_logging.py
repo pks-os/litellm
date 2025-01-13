@@ -4,7 +4,6 @@
 import copy
 import datetime
 import json
-import logging
 import os
 import re
 import subprocess
@@ -23,8 +22,8 @@ from litellm import (
     json_logs,
     log_raw_request_response,
     turn_off_message_logging,
-    verbose_logger,
 )
+from litellm._logging import _is_debugging_on, verbose_logger
 from litellm.caching.caching import DualCache, InMemoryCache
 from litellm.caching.caching_handler import LLMCachingHandler
 from litellm.cost_calculator import _select_model_name_for_cost_calc
@@ -589,7 +588,7 @@ class Logging(LiteLLMLoggingBaseClass):
 
         Prints the RAW curl command sent from LiteLLM
         """
-        if verbose_logger.isEnabledFor(logging.DEBUG) or litellm.set_verbose is True:
+        if _is_debugging_on():
             if json_logs:
                 masked_headers = self._get_masked_headers(headers)
                 verbose_logger.debug(
@@ -757,6 +756,12 @@ class Logging(LiteLLMLoggingBaseClass):
                 )
             )
 
+    def get_response_ms(self) -> float:
+        return (
+            self.model_call_details.get("end_time", datetime.datetime.now())
+            - self.model_call_details.get("start_time", datetime.datetime.now())
+        ).total_seconds() * 1000
+
     def _response_cost_calculator(
         self,
         result: Union[
@@ -889,13 +894,9 @@ class Logging(LiteLLMLoggingBaseClass):
                     or isinstance(result, Batch)
                     or isinstance(result, FineTuningJob)
                 ):
-                    ## RESPONSE COST ##
-                    self.model_call_details["response_cost"] = (
-                        self._response_cost_calculator(result=result)
-                    )
-
                     ## HIDDEN PARAMS ##
-                    if hasattr(result, "_hidden_params"):
+                    hidden_params = getattr(result, "_hidden_params", {})
+                    if hidden_params:
                         # add to metadata for logging
                         if self.model_call_details.get("litellm_params") is not None:
                             self.model_call_details["litellm_params"].setdefault(
@@ -914,6 +915,15 @@ class Logging(LiteLLMLoggingBaseClass):
                             ] = getattr(
                                 result, "_hidden_params", {}
                             )
+                    ## RESPONSE COST - Only calculate if not in hidden_params ##
+                    if "response_cost" in hidden_params:
+                        self.model_call_details["response_cost"] = hidden_params[
+                            "response_cost"
+                        ]
+                    else:
+                        self.model_call_details["response_cost"] = (
+                            self._response_cost_calculator(result=result)
+                        )
                     ## STANDARDIZED LOGGING PAYLOAD
 
                     self.model_call_details["standard_logging_object"] = (

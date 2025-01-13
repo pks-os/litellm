@@ -100,6 +100,7 @@ def get_llm_provider(  # noqa: PLR0915
 
     Return model, custom_llm_provider, dynamic_api_key, api_base
     """
+
     try:
         ## IF LITELLM PARAMS GIVEN ##
         if litellm_params is not None:
@@ -306,7 +307,9 @@ def get_llm_provider(  # noqa: PLR0915
             custom_llm_provider = "petals"
         ## bedrock
         elif (
-            model in litellm.bedrock_models or model in litellm.bedrock_embedding_models
+            model in litellm.bedrock_models
+            or model in litellm.bedrock_embedding_models
+            or model in litellm.bedrock_converse_models
         ):
             custom_llm_provider = "bedrock"
         elif model in litellm.watsonx_models:
@@ -392,6 +395,8 @@ def _get_openai_compatible_provider_info(  # noqa: PLR0915
         ) = litellm.PerplexityChatConfig()._get_openai_compatible_provider_info(
             api_base, api_key
         )
+    elif custom_llm_provider == "aiohttp_openai":
+        return model, "aiohttp_openai", api_key, api_base
     elif custom_llm_provider == "anyscale":
         # anyscale is openai compatible, we just need to set this to custom_openai and have the api_base be https://api.endpoints.anyscale.com/v1
         api_base = api_base or get_secret_str("ANYSCALE_API_BASE") or "https://api.endpoints.anyscale.com/v1"  # type: ignore
