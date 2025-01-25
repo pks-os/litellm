@@ -955,6 +955,7 @@ class TeamBase(LiteLLMPydanticObjectBase):
 class NewTeamRequest(TeamBase):
     model_aliases: Optional[dict] = None
     tags: Optional[list] = None
+    guardrails: Optional[List[str]] = None
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -979,6 +980,7 @@ class UpdateTeamRequest(LiteLLMPydanticObjectBase):
     models: Optional[list] = None
     blocked: Optional[bool] = None
     budget_duration: Optional[str] = None
+    guardrails: Optional[List[str]] = None
     """
 
     team_id: str  # required
@@ -993,6 +995,7 @@ class UpdateTeamRequest(LiteLLMPydanticObjectBase):
     budget_duration: Optional[str] = None
     tags: Optional[list] = None
     model_aliases: Optional[dict] = None
+    guardrails: Optional[List[str]] = None
 
 
 class ResetTeamBudgetRequest(LiteLLMPydanticObjectBase):
@@ -1088,6 +1091,7 @@ class LiteLLM_TeamTable(TeamBase):
     budget_reset_at: Optional[datetime] = None
     model_id: Optional[int] = None
     litellm_model_table: Optional[LiteLLM_ModelTable] = None
+    created_at: Optional[datetime] = None
 
     model_config = ConfigDict(protected_namespaces=())
 
@@ -1479,7 +1483,8 @@ class LiteLLM_VerificationTokenView(LiteLLM_VerificationToken):
                 # Check if the value is None and set the corresponding attribute
                 if getattr(self, attr_name, None) is None:
                     kwargs[attr_name] = value
-
+            if key == "end_user_id" and value is not None and isinstance(value, int):
+                kwargs[key] = str(value)
         # Initialize the superclass
         super().__init__(**kwargs)
 
@@ -2254,6 +2259,11 @@ LiteLLM_ManagementEndpoint_MetadataFields = [
     "temp_budget_expiry",
 ]
 
+LiteLLM_ManagementEndpoint_MetadataFields_Premium = [
+    "guardrails",
+    "tags",
+]
+
 
 class ProviderBudgetResponseObject(LiteLLMPydanticObjectBase):
     """
@@ -2288,7 +2298,6 @@ class ProxyStateVariables(TypedDict):
 UI_TEAM_ID = "litellm-dashboard"
 
 
-
 class JWTAuthBuilderResult(TypedDict):
     is_proxy_admin: bool
     team_object: Optional[LiteLLM_TeamTable]
@@ -2300,6 +2309,7 @@ class JWTAuthBuilderResult(TypedDict):
     user_id: Optional[str]
     end_user_id: Optional[str]
     org_id: Optional[str]
+
 
 class ClientSideFallbackModel(TypedDict, total=False):
     """

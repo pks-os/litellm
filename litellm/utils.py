@@ -2132,6 +2132,7 @@ def get_litellm_params(
     prompt_id: Optional[str] = None,
     prompt_variables: Optional[dict] = None,
     async_call: Optional[bool] = None,
+    ssl_verify: Optional[bool] = None,
     **kwargs,
 ) -> dict:
     litellm_params = {
@@ -2170,6 +2171,7 @@ def get_litellm_params(
         "prompt_id": prompt_id,
         "prompt_variables": prompt_variables,
         "async_call": async_call,
+        "ssl_verify": ssl_verify,
     }
     return litellm_params
 
@@ -4092,7 +4094,7 @@ def _get_potential_model_names(
     elif custom_llm_provider and model.startswith(
         custom_llm_provider + "/"
     ):  # handle case where custom_llm_provider is provided and model starts with custom_llm_provider
-        split_model = model.split("/")[1]
+        split_model = model.split("/", 1)[1]
         combined_model_name = model
         stripped_model_name = _strip_model_name(
             model=split_model, custom_llm_provider=custom_llm_provider
